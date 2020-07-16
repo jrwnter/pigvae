@@ -1,12 +1,11 @@
 import torch
-from torch.nn import Linear, Sequential, ELU, BatchNorm1d, ReLU
-from graph_ae.modules.fully_connected import FNN
+from graphae.fully_connected import FNN
 
 
-class MetaEdgeDecoder(torch.nn.Module):
+class MetaNodeDecoder(torch.nn.Module):
     def __init__(self, num_nodes, emb_dim, meta_node_dim, hidden_dim, num_layers, batch_norm=False):
         super().__init__()
-        self.num_nodes = num_nodes,
+        self.num_nodes = num_nodes
         self.meta_node_dim = meta_node_dim
         self.fnn = FNN(
             input_dim=emb_dim,
@@ -26,14 +25,13 @@ class MetaEdgeDecoder(torch.nn.Module):
 class EdgePredictor(torch.nn.Module):
     def __init__(self, num_nodes, meta_node_dim, hidden_dim, num_layers, batch_norm=False):
         super().__init__()
-        self.num_nodes = num_nodes,
+        self.num_nodes = num_nodes
         self.meta_node_dim = meta_node_dim
-        self.output_dim = 1
         self.idxs = self.get_combination_idxs()
         self.fnn = FNN(
             input_dim=2*meta_node_dim,
             hidden_dim=hidden_dim,
-            output_dim=self.output_dim,
+            output_dim=1,
             num_layers=num_layers,
             non_linearity="elu",
             batch_norm=batch_norm
@@ -53,23 +51,36 @@ class EdgePredictor(torch.nn.Module):
 
     def forward(self, x):
         # x: [batch_size, num_meta_nodes, meta_node_dim]
-        idxs = self.idxs.type_as(x)
-        x = x[torch.arange(x.shape[0]).view(-1, 1, 1, 1), idxs].flatten(start_dim=3).flatten(end_dim=2)
+        batch_size = x.shape[0]
+        idxs = self.idxs.type_as(x).long()
+        x = x[torch.arange(x.shape[0], dtype=torch.long).view(-1, 1, 1, 1), idxs].flatten(start_dim=3).flatten(end_dim=2)
         x = self.fnn(x)
-        x = torch.mean(x.view(-1, 2, self.output_dim), dim=1)  # average over both directions
-        #x = torch.nn.functional.sigmoid(x)  # probability that two nodes are connected
-        return x
+        x = torch.mean(x.view(-1, 2), dim=1)  # average over both directions
+        x = torch.sigmoid(x)  # probability that two nodes are connected
+        x = torch.repeat_interleave(x, 2)  # repeat for both directions
+
+        idxs = torch.cat((
+            torch.repeat_interleave(torch.arange(batch_size), self.num_nodes * (self.num_nodes - 1)).view(-1, 1).type_as(idxs),
+            idxs.flatten(end_dim=1).repeat((batch_size, 1))),
+            dim=1)
+        adj = torch.sparse.FloatTensor(
+            idxs.t(),
+            x,
+            torch.Size([batch_size, self.num_nodes, self.num_nodes])
+        ).to_dense()
+        return adj
 
 
 class NodePredictor(torch.nn.Module):
     def __init__(self, num_nodes, meta_node_dim, hidden_dim, num_layers, batch_norm=False, num_node_features=24):
         super().__init__()
-        self.num_nodes = num_nodes,
+        self.num_nodes = num_nodes
         self.meta_node_dim = meta_node_dim
+        self.output_dim = num_node_features + 1
         self.fnn = FNN(
             input_dim=meta_node_dim,
             hidden_dim=hidden_dim,
-            output_dim=num_node_features + 1,  # +1 for probability that node exists
+            output_dim=self.output_dim,  # +1 for probability that node exists
             num_layers=num_layers,
             non_linearity="elu",
             batch_norm=batch_norm
@@ -77,6 +88,7 @@ class NodePredictor(torch.nn.Module):
 
     def forward(self, x):
         # x: [batch_size, num_meta_nodes, meta_node_dim]
-        x = x.view(-1)
+        x = x.view(-1, self.meta_node_dim)
         x = self.fnn(x)
+        x = x.view(-1, self.num_nodes, self.output_dim)
         return x

@@ -1,6 +1,8 @@
 import torch
+from torch.utils.data import Dataset
 from rdkit import Chem
 from torch_geometric.data import Data, Batch
+from torch_geometric.transforms import ToDense
 
 ELEM_LIST = ['C', 'N', 'O', 'S', 'F', 'Si', 'P', 'Cl', 'Br', 'I', 'H']
 CHARGE_LIST = [-1, -2, 1, 2, 0]
@@ -10,6 +12,22 @@ HYBRIDIZATION_TYPE_LIST = [Chem.rdchem.HybridizationType.S, Chem.rdchem.Hybridiz
                            Chem.rdchem.HybridizationType.UNSPECIFIED]
 HS_LIST = [0, 1, 2, 3]
 NUM_ELEMENTS = len(ELEM_LIST)
+
+
+class MolecularGraphDataset(Dataset):
+    def __init__(self, smiles_list, num_nodes):
+        super().__init__()
+        self.smiles = smiles_list
+        self.dense_transform = ToDense(num_nodes=num_nodes)
+
+    def __len__(self):
+        return len(self.smiles)
+
+    def __getitem__(self, idx):
+        smiles = self.smiles[idx]
+        graph = MolecularGraph.from_smiles(smiles)
+        graph = self.dense_transform(graph)
+        return graph.x, graph.adj, graph.mask
 
 
 class MolecularGraph(Data):

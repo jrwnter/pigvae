@@ -1,8 +1,7 @@
 import torch
-from torch.nn import Linear, Sequential, ELU, BatchNorm1d, ReLU
-import torch.nn.functional as F
+from torch.nn import BatchNorm1d
 from torch_geometric.nn import DenseGCNConv
-from graph_ae.modules.fully_connected import FNN
+from graphae.fully_connected import FNN
 
 
 class GraphEncoder(torch.nn.Module):
@@ -36,11 +35,11 @@ class GraphEncoder(torch.nn.Module):
         return x
 
 
-class NodeAggregation(torch.nn.Module):
+class NodeAggregator(torch.nn.Module):
     def __init__(self, node_dim, emb_dim, hidden_dim, num_layers, num_nodes, batch_norm=False):
         super().__init__()
         self.num_nodes = num_nodes
-        self.emb_dim = emb_dim
+        self.node_dim = node_dim
         self.fnn = FNN(
             input_dim=node_dim,
             hidden_dim=hidden_dim,
@@ -51,7 +50,7 @@ class NodeAggregation(torch.nn.Module):
         )
 
     def forward(self, node_emb, mask):
-        x = torch.mean(node_emb.view(-1, self.num_nodes, self.emb_dim), dim=1)
+        x = torch.mean(node_emb.view(-1, self.num_nodes, self.node_dim), dim=1)
         # TODO: put activation func here?
         x = self.fnn(x)
         return x
