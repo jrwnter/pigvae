@@ -23,11 +23,11 @@ def add_arguments(parser):
     parser.set_defaults(progress_bar=False)
 
     # TRAINING
-    parser.add_argument("-b", "--batch_size", default=64, type=int)
-    parser.add_argument("--lr", default=0.00005, type=float)
+    parser.add_argument("-b", "--batch_size", default=512, type=int)
+    parser.add_argument("--lr", default=0.00001, type=float)
     parser.add_argument("--lr_scheduler_factor", default=0.5, type=float)
-    parser.add_argument("--lr_scheduler_patience", default=10, type=int)
-    parser.add_argument("--lr_scheduler_cooldown", default=50, type=int)
+    parser.add_argument("--lr_scheduler_patience", default=2, type=int)
+    parser.add_argument("--lr_scheduler_cooldown", default=5, type=int)
     parser.add_argument("--vae", dest='vae', action='store_true')
     parser.set_defaults(vae=False)
 

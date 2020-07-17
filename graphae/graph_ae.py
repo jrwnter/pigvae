@@ -54,26 +54,11 @@ class GraphAE(torch.nn.Module):
         adj = self.edge_predictor(meta_node_emb)
         node_features = self.node_predictor(meta_node_emb)
         mask, node_features = node_features[:, :, 0], node_features[:, :, 1:]
+        mask = torch.sigmoid(mask)
+
         node_emb_gen = self.graph_encoder(node_features, adj, mask)
         mol_emb_gen = self.node_aggregator(node_emb_gen, mask)
 
         return mol_emb, mol_emb_gen, adj, mask, node_features
-
-    def critic(self, mol_emb, mol_emb_gen):
-        resemblance_loss = torch.nn.functional.mse_loss(
-            input=mol_emb,
-            target=mol_emb_gen
-        )
-        divergence_loss = - torch.nn.functional.mse_loss(
-            input=mol_emb,
-            target=mol_emb[torch.arange(len(mol_emb) - 1, -1, -1).type_as(mol_emb).long()]
-        )
-        total_loss = resemblance_loss #+ divergence_loss
-        loss = {
-            "resemblance_loss": resemblance_loss,
-            "divergence_loss": divergence_loss,
-            "total_loss": total_loss
-        }
-        return loss
 
 
