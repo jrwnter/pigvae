@@ -19,6 +19,7 @@ def main(hparams):
     checkpoint_callback = ModelCheckpoint(
         filepath=hparams.save_dir + "/run{}/".format(hparams.id),
         save_top_k=1,
+        save_last=True,
         verbose=False,
         monitor='val_loss',
         mode='min',

@@ -54,3 +54,4 @@ class NodeAggregator(torch.nn.Module):
         # TODO: put activation func here?
         x = self.fnn(x)
         return x
+

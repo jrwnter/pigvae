@@ -2,10 +2,9 @@ import torch
 from graphae import encoder, decoder
 
 
-class GraphAE(torch.nn.Module):
+class Encoder(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
-        # Encoder
         self.graph_encoder = encoder.GraphEncoder(
             input_dim=hparams["num_atom_features"],
             output_dim=hparams["node_dim"],
@@ -22,7 +21,16 @@ class GraphAE(torch.nn.Module):
             num_nodes=hparams["max_num_nodes"],
             batch_norm=False
         )
-        # Decoder
+
+    def forward(self, node_features, adj, mask):
+        node_emb = self.graph_encoder(node_features, adj, mask)
+        mol_emb = self.node_aggregator(node_emb, mask)
+        return mol_emb
+
+
+class Decoder(torch.nn.Module):
+    def __init__(self, hparams):
+        super().__init__()
         self.meta_node_decoder = decoder.MetaNodeDecoder(
             num_nodes=hparams["max_num_nodes"],
             emb_dim=hparams["emb_dim"],
@@ -44,21 +52,42 @@ class GraphAE(torch.nn.Module):
             hidden_dim=hparams["node_decoder_hidden_dim"],
             num_layers=hparams["node_decoder_num_layers"],
             batch_norm=False,
-            num_node_features=hparams["num_atom_features"]
+            num_node_features=hparams["num_atom_features"] - 1
         )
 
-    def forward(self, node_features, adj, mask):
-        node_emb = self.graph_encoder(node_features, adj, mask)
-        mol_emb = self.node_aggregator(node_emb, mask)
-        meta_node_emb = self.meta_node_decoder(mol_emb)
+    def forward(self, emb):
+        meta_node_emb = self.meta_node_decoder(emb)
         adj = self.edge_predictor(meta_node_emb)
         node_features = self.node_predictor(meta_node_emb)
         mask, node_features = node_features[:, :, 0], node_features[:, :, 1:]
         mask = torch.sigmoid(mask)
+        node_features = torch.sigmoid(node_features)
+        deg = adj.sum(axis=1).unsqueeze(-1)
+        node_features = torch.cat((node_features, deg), dim=-1)
+        return node_features, adj, mask
 
-        node_emb_gen = self.graph_encoder(node_features, adj, mask)
-        mol_emb_gen = self.node_aggregator(node_emb_gen, mask)
 
-        return mol_emb, mol_emb_gen, adj, mask, node_features
+class GraphAE(torch.nn.Module):
+    def __init__(self, hparams):
+        super().__init__()
+        self.encoder = Encoder(hparams)
+        self.decoder = Decoder(hparams)
+
+    def forward(self, node_features, adj, mask):
+        mol_emb = self.encoder(node_features, adj, mask)
+        node_features_, adj_, mask_ = self.decoder(mol_emb)
+        mol_emb_ = self.encoder(node_features_, adj_, mask_)
+        output = {
+            "node_features_real": node_features,
+            "node_features_pred": node_features_,
+            "adj_real": adj,
+            "adj_pred": adj_,
+            "mask_real": mask,
+            "mask_pred": mask_,
+            "mol_emb_real": mol_emb,
+            "mol_emb_pred": mol_emb_
+        }
+
+        return output
 
 
