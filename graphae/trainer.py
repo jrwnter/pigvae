@@ -33,10 +33,22 @@ class PLGraphAE(pl.LightningModule):
         )
 
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, batch_size=64, num_workers=32, shuffle=True, pin_memory=True)
+        return DataLoader(
+            dataset=self.train_dataset,
+            batch_size=self.hparams["batch_size"],
+            num_workers=self.hparams["num_workers"],
+            shuffle=True,
+            pin_memory=True
+        )
 
     def val_dataloader(self):
-        return DataLoader(self.eval_dataset, batch_size=64, num_workers=32, shuffle=False, pin_memory=True)
+        return DataLoader(
+            dataset=self.eval_dataset,
+            batch_size=self.hparams["batch_size"],
+            num_workers=self.hparams["num_workers"],
+            shuffle=False,
+            pin_memory=True
+        )
 
     def configure_optimizers(self):
         opt_enc = torch.optim.Adam(self.graph_ae.encoder.parameters(), lr=self.hparams.lr)

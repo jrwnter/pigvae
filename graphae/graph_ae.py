@@ -10,7 +10,7 @@ class Encoder(torch.nn.Module):
             output_dim=hparams["node_dim"],
             hidden_dim=hparams["graph_encoder_hidden_dim"],
             num_layers=hparams["graph_encoder_num_layers"],
-            batch_norm=False,
+            batch_norm=hparams["batch_norm"],
             non_linearity="elu"
         )
         self.node_aggregator = encoder.NodeAggregator(
@@ -19,7 +19,7 @@ class Encoder(torch.nn.Module):
             hidden_dim=hparams["node_aggregator_hidden_dim"],
             num_layers=hparams["node_aggregator_num_layers"],
             num_nodes=hparams["max_num_nodes"],
-            batch_norm=False
+            batch_norm=hparams["batch_norm"],
         )
 
     def forward(self, node_features, adj, mask):
@@ -37,21 +37,21 @@ class Decoder(torch.nn.Module):
             meta_node_dim=hparams["meta_node_dim"],
             hidden_dim=hparams["meta_node_decoder_hidden_dim"],
             num_layers=hparams["meta_node_decoder_num_layers"],
-            batch_norm=False
+            batch_norm=hparams["batch_norm"],
         )
         self.edge_predictor = decoder.EdgePredictor(
             num_nodes=hparams["max_num_nodes"],
             meta_node_dim=hparams["meta_node_dim"],
             hidden_dim=hparams["edge_predictor_hidden_dim"],
             num_layers=hparams["edge_predictor_num_layers"],
-            batch_norm=False
+            batch_norm=hparams["batch_norm"],
         )
         self.node_predictor = decoder.NodePredictor(
             num_nodes=hparams["max_num_nodes"],
             meta_node_dim=hparams["meta_node_dim"],
             hidden_dim=hparams["node_decoder_hidden_dim"],
             num_layers=hparams["node_decoder_num_layers"],
-            batch_norm=False,
+            batch_norm=hparams["batch_norm"],
             num_node_features=hparams["num_atom_features"] - 1
         )
 

@@ -33,6 +33,8 @@ def add_arguments(parser):
 
     # GENERAL GRAPH PROPERTIES
     parser.add_argument("--max_num_nodes", default=16, type=int)
+    parser.add_argument("--batch_norm", dest='batch_norm', action='store_true')
+    parser.set_defaults(batch_norm=False)
 
     # ENCODER
     parser.add_argument("--emb_dim", default=512, type=int)
@@ -55,7 +57,7 @@ def add_arguments(parser):
 
     # DATA
     parser.add_argument("--data_path", default=DEFAULT_DATA_PATH, type=str)
-    parser.add_argument("--num_rows", default=1000000, type=int)
+    parser.add_argument("--num_rows", default=None, type=int)
     parser.add_argument("--num_workers", default=8, type=int)
     parser.add_argument("--num_atom_features", default=2, type=int) #24
     parser.add_argument("--shuffle", default=1, type=int)
