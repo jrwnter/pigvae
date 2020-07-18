@@ -31,6 +31,11 @@ def node_count_loss(mask, mask_gen):
     )
     return loss
 
+def kld_loss(mu, logvar):
+    loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), axis=1)
+    loss = torch.mean(loss)
+    return loss
+
 
 def edge_count_loss(adj, adj_gen):
     batch_size, max_num_nodes, _ = adj.shape
@@ -46,11 +51,10 @@ def edge_count_loss(adj, adj_gen):
     return loss
 
 
-
-
-
 def critic(mol_emb, mol_emb_gen, mask, mask_gen, adj, adj_gen):
     loss = {
+        "resemblance_loss": resemblance_loss(mol_emb, mol_emb_gen),
+        "divergence_loss": divergence_loss(mol_emb),
         "node_count_loss": node_count_loss(mask, mask_gen),
         "edge_count_loss": edge_count_loss(adj, adj_gen),
     }

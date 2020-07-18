@@ -12,7 +12,7 @@ class MetaNodeDecoder(torch.nn.Module):
             hidden_dim=hidden_dim,
             output_dim=num_nodes * meta_node_dim,
             num_layers=num_layers,
-            non_linearity="elu",
+            non_linearity="lrelu",
             batch_norm=batch_norm
         )
 
@@ -33,7 +33,7 @@ class EdgePredictor(torch.nn.Module):
             hidden_dim=hidden_dim,
             output_dim=1,
             num_layers=num_layers,
-            non_linearity="elu",
+            non_linearity="lrelu",
             batch_norm=batch_norm
         )
 
@@ -76,19 +76,28 @@ class NodePredictor(torch.nn.Module):
         super().__init__()
         self.num_nodes = num_nodes
         self.meta_node_dim = meta_node_dim
-        self.output_dim = num_node_features + 1
+        self.output_dim = num_node_features + 1  # +1 for probability that node exists
         self.fnn = FNN(
             input_dim=meta_node_dim,
             hidden_dim=hidden_dim,
-            output_dim=self.output_dim,  # +1 for probability that node exists
+            output_dim=self.output_dim,
             num_layers=num_layers,
-            non_linearity="elu",
-            batch_norm=batch_norm
+            non_linearity="lrelu",
+            batch_norm=batch_norm,
+            flatten_for_batch_norm=False
         )
 
     def forward(self, x):
         # x: [batch_size, num_meta_nodes, meta_node_dim]
         x = x.view(-1, self.meta_node_dim)
         x = self.fnn(x)
+        element_pred = torch.softmax(x[:, :11], dim=-1)
+        charge_pred = torch.softmax(x[:, 11:16], dim=-1)
+        hybrid_pred = torch.softmax(x[:, 16:23], dim=-1)
+        in_ring_pred = torch.sigmoid(x[:, 23]).unsqueeze(-1)
+        node_prob_pred = torch.sigmoid(x[:, 24]).unsqueeze(-1)
+        x = torch.cat((element_pred, charge_pred, hybrid_pred, in_ring_pred, node_prob_pred), dim=-1)
+
         x = x.view(-1, self.num_nodes, self.output_dim)
+
         return x

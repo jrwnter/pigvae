@@ -1,5 +1,6 @@
 import os
 import logging
+import torch
 from argparse import ArgumentParser
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateLogger
@@ -34,10 +35,11 @@ def main(hparams):
         progress_bar_refresh_rate=10 if hparams.progress_bar else 0,
         logger=tb_logger,
         checkpoint_callback=checkpoint_callback,
-        val_check_interval=hparams.eval_freq,
+        val_check_interval=hparams.eval_freq if not hparams.test else 1.0,
         distributed_backend=None if hparams.gpus == 1 else "dp",
         gradient_clip_val=0.5,
-        callbacks=[lr_logger]
+        callbacks=[lr_logger],
+        profiler=True
     )
     trainer.fit(model)
 

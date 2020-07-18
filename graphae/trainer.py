@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
@@ -20,17 +21,14 @@ class PLGraphAE(pl.LightningModule):
         return output
 
     def prepare_data(self):
-        smiles_df = pd.read_csv(self.hparams["data_path"], nrows=self.hparams["num_rows"])
-        smiles_df = smiles_df[smiles_df.num_atoms <= self.hparams["max_num_nodes"]]
-        smiles_list = smiles_df.smiles.tolist()
-        self.train_dataset = MolecularGraphDataset(
-            smiles_list=smiles_list[self.hparams["num_eval_samples"]:],
-            num_nodes=self.hparams["max_num_nodes"]
-        )
-        self.eval_dataset = MolecularGraphDataset(
-            smiles_list=smiles_list[:self.hparams["num_eval_samples"]],
-            num_nodes=self.hparams["max_num_nodes"]
-        )
+        if self.hparams["test"]:
+            graphs = np.load("1000_16mnn_graphs.npy")
+            self.train_dataset = MolecularGraphDataset(graphs=graphs[128:], noise=True)
+            self.eval_dataset = MolecularGraphDataset(graphs=graphs[:128], noise=False)
+        else:
+            graphs = np.load("1000000_16mnn_graphs.npy")
+            self.train_dataset = MolecularGraphDataset(graphs=graphs[self.hparams["num_eval_samples"]:], noise=True)
+            self.eval_dataset = MolecularGraphDataset(graphs=graphs[:self.hparams["num_eval_samples"]], noise=False)
 
     def train_dataloader(self):
         return DataLoader(
@@ -51,9 +49,9 @@ class PLGraphAE(pl.LightningModule):
         )
 
     def configure_optimizers(self):
-        opt_enc = torch.optim.Adam(self.graph_ae.encoder.parameters(), lr=self.hparams.lr)
-        opt_dec = torch.optim.Adam(self.graph_ae.decoder.parameters(), lr=self.hparams.lr)
-        opt_all = torch.optim.Adam(self.graph_ae.parameters(), lr=self.hparams.lr)
+        opt_enc = torch.optim.Adam(self.graph_ae.encoder.parameters(), lr=0.00001, betas=(0.5, 0.99))
+        opt_dec = torch.optim.Adam(self.graph_ae.decoder.parameters(), lr=0.00002, betas=(0.5, 0.99))
+        opt_all = torch.optim.Adam(self.graph_ae.parameters(), lr=0.00001)
 
         """ lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
@@ -65,24 +63,19 @@ class PLGraphAE(pl.LightningModule):
         scheduler = {
             'scheduler': lr_scheduler,
         }"""
-        return [opt_enc, opt_dec, opt_all], []
+        return [opt_enc, opt_dec], []
 
     def training_step(self, batch, batch_nb, optimizer_idx):
         node_features, adj, mask = batch
-        deg_real = adj.sum(axis=1)
-        adj[adj == 0] += torch.randn_like(adj[adj == 0]).abs().type_as(node_features) * 0.01
-        adj[adj == 1] -= torch.randn_like(adj[adj == 1]).abs().type_as(node_features) * 0.01
-        mask = mask.float()
-        mask[mask == 0] += torch.randn_like(mask[mask == 0]).abs().type_as(node_features) * 0.01
-        mask[mask == 1] -= torch.randn_like(mask[mask == 1]).abs().type_as(node_features) * 0.01
+
         output = self(node_features, adj, mask)
         # train encoder
         if optimizer_idx == 0:
             loss = mse_loss(
                 input=output["mol_emb_real"],
-                target=output["mol_emb_pred"].detach()
+                target=output["mol_emb_pred"]
             )
-            loss = 1 / loss
+            loss = - loss
             metric = {"enc_loss": loss}
 
         # train decoder

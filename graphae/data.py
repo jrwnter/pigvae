@@ -14,7 +14,7 @@ HS_LIST = [0, 1, 2, 3]
 NUM_ELEMENTS = len(ELEM_LIST)
 
 
-class MolecularGraphDataset(Dataset):
+class MolecularGraphDatasetFromSmiles(Dataset):
     def __init__(self, smiles_list, num_nodes):
         super().__init__()
         self.smiles = smiles_list
@@ -31,6 +31,31 @@ class MolecularGraphDataset(Dataset):
         deg = graph.adj.sum(axis=1).unsqueeze(-1)
         graph.x = torch.cat((graph.x, deg), dim=-1).float()
         return graph.x, graph.adj, graph.mask
+
+
+class MolecularGraphDataset(Dataset):
+    def __init__(self, graphs, noise):
+        super().__init__()
+        self.graphs = graphs
+        self.noise = noise
+
+    def __len__(self):
+        return len(self.graphs)
+
+    def __getitem__(self, idx):
+        graph = self.graphs[idx]
+        x = torch.from_numpy(graph[:, :24])
+        adj = torch.from_numpy(graph[:, 24:40])
+        mask = torch.from_numpy(graph[:, 40])
+        if self.noise:
+            x[x == 0] += torch.randn_like(x[x == 0]).abs().type_as(x) * 0.1
+            x[x == 1] -= torch.randn_like(x[x == 1]).abs().type_as(x) * 0.1
+            adj[adj == 0] += torch.randn_like(adj[adj == 0]).abs().type_as(x) * 0.1
+            adj[adj == 1] -= torch.randn_like(adj[adj == 1]).abs().type_as(x) * 0.1
+            mask = mask.float()
+            mask[mask == 0] += torch.randn_like(mask[mask == 0]).abs().type_as(x) * 0.1
+            mask[mask == 1] -= torch.randn_like(mask[mask == 1]).abs().type_as(x) * 0.1
+        return x, adj, mask
 
 
 class MolecularGraph(Data):
