@@ -48,13 +48,7 @@ class MolecularGraphDataset(Dataset):
         adj = torch.from_numpy(graph[:, 24:40])
         mask = torch.from_numpy(graph[:, 40])
         if self.noise:
-            x[x == 0] += torch.randn_like(x[x == 0]).abs().type_as(x) * 0.1
-            x[x == 1] -= torch.randn_like(x[x == 1]).abs().type_as(x) * 0.1
-            adj[adj == 0] += torch.randn_like(adj[adj == 0]).abs().type_as(x) * 0.1
-            adj[adj == 1] -= torch.randn_like(adj[adj == 1]).abs().type_as(x) * 0.1
-            mask = mask.float()
-            mask[mask == 0] += torch.randn_like(mask[mask == 0]).abs().type_as(x) * 0.1
-            mask[mask == 1] -= torch.randn_like(mask[mask == 1]).abs().type_as(x) * 0.1
+            x, adj, mask = add_noise(x.detach().clone(), adj.detach().clone(), mask.detach().clone())
         return x, adj, mask
 
 
@@ -142,3 +136,14 @@ def rdkit_mol_from_graph(graph):
         mol.AddBond(bond[0], bond[1])
     mol = mol.GetMol()
     return mol
+
+
+def add_noise(x, adj, mask, std=0.01):
+    x[x == 0] += torch.randn_like(x[x == 0]).abs().type_as(x) * std
+    x[x == 1] -= torch.randn_like(x[x == 1]).abs().type_as(x) * std
+    adj[adj == 0] += torch.randn_like(adj[adj == 0]).abs().type_as(x) * std
+    adj[adj == 1] -= torch.randn_like(adj[adj == 1]).abs().type_as(x) * std
+    mask = mask.float()
+    mask[mask == 0] += torch.randn_like(mask[mask == 0]).abs().type_as(x) * std
+    mask[mask == 1] -= torch.randn_like(mask[mask == 1]).abs().type_as(x) * std
+    return x, adj, mask

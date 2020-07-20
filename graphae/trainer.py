@@ -4,9 +4,9 @@ from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 import pandas as pd
 from graphae.graph_ae import GraphAE
-from graphae.data import MolecularGraphDataset
+from graphae.data import MolecularGraphDataset, add_noise
 from graphae.loss import critic, resemblance_loss, kld_loss
-from torch.nn.functional import mse_loss
+from torch.nn.functional import mse_loss, triplet_margin_loss
 
 
 class PLGraphAE(pl.LightningModule):
@@ -23,11 +23,11 @@ class PLGraphAE(pl.LightningModule):
     def prepare_data(self):
         if self.hparams["test"]:
             graphs = np.load("1000_16mnn_graphs.npy")
-            self.train_dataset = MolecularGraphDataset(graphs=graphs[128:], noise=True)
+            self.train_dataset = MolecularGraphDataset(graphs=graphs[128:], noise=False)
             self.eval_dataset = MolecularGraphDataset(graphs=graphs[:128], noise=False)
         else:
             graphs = np.load("1000000_16mnn_graphs.npy")
-            self.train_dataset = MolecularGraphDataset(graphs=graphs[self.hparams["num_eval_samples"]:], noise=True)
+            self.train_dataset = MolecularGraphDataset(graphs=graphs[self.hparams["num_eval_samples"]:], noise=False)
             self.eval_dataset = MolecularGraphDataset(graphs=graphs[:self.hparams["num_eval_samples"]], noise=False)
 
     def train_dataloader(self):
@@ -49,7 +49,7 @@ class PLGraphAE(pl.LightningModule):
         )
 
     def configure_optimizers(self):
-        opt_enc = torch.optim.Adam(self.graph_ae.encoder.parameters(), lr=0.00001, betas=(0.5, 0.99))
+        opt_enc = torch.optim.Adam(self.graph_ae.encoder.parameters(), lr=0.00005, betas=(0.5, 0.99))
         opt_dec = torch.optim.Adam(self.graph_ae.decoder.parameters(), lr=0.00002, betas=(0.5, 0.99))
         #opt_all = torch.optim.Adam(self.graph_ae.parameters(), lr=0.0001)
 
@@ -67,25 +67,33 @@ class PLGraphAE(pl.LightningModule):
 
     def training_step(self, batch, batch_nb, optimizer_idx):
         node_features, adj, mask = batch
-
         output = self(node_features, adj, mask)
+        noisy_node_features, noisy_adj, noisy_mask = add_noise(node_features.detach().clone(), adj.detach().clone(), mask.detach().clone(),
+                                                               std=0.1)
+        #print(noisy_node_features)
+        noisy_mol_emb_real = self.graph_ae.encoder(noisy_node_features.detach(), noisy_adj.detach(), noisy_mask.detach())
+        #print(torch.norm(noisy_node_features - node_features, -1).mean(), torch.norm(noisy_adj - adj, -1).mean(), torch.norm(noisy_mask - mask, -1).mean())
+        mol_emb_real_shuffled = output["mol_emb_real"].detach()[torch.arange(len(output["mol_emb_real"]) - 1, -1, -1).type_as(noisy_mol_emb_real).long()]
         # train encoder
         if optimizer_idx == 0:
-            loss = mse_loss(
-                input=output["mol_emb_real"].requires_grad_(True),
-                target=output["mol_emb_pred"].detach()
+            loss = triplet_margin_loss(
+                anchor=output["mol_emb_real"].requires_grad_(True),
+                positive=noisy_mol_emb_real.detach(),
+                negative=output["mol_emb_pred"].detach(),
+                margin=1.
             )
-            loss = - 0.1 * loss
-            loss += 0.1 * kld_loss(output["mu_real"], output["logvar_real"])
+            """print(torch.norm((output["mol_emb_real"] - noisy_mol_emb_real), dim=-1).mean().item(),
+                  torch.norm((output["mol_emb_real"] - mol_emb_real_shuffled), dim=-1).mean().item(), loss.item())"""
             metric = {"enc_loss": loss}
 
         # train decoder
         elif optimizer_idx == 1:
-            loss = mse_loss(
-                input=output["mol_emb_real"],
-                target=output["mol_emb_pred"]
+            loss = triplet_margin_loss(
+                anchor=output["mol_emb_real"].detach(),
+                positive=output["mol_emb_pred"].requires_grad_(True),
+                negative=noisy_mol_emb_real.detach(),
+                margin=1.
             )
-            loss += 0.1 * kld_loss(output["mu_pred"], output["logvar_pred"])
             metric = {"dec_loss": loss}
 
         output = {
@@ -105,10 +113,6 @@ class PLGraphAE(pl.LightningModule):
             mask_gen=output["mask_pred"],
             adj=output["adj_real"],
             adj_gen=output["adj_pred"],
-            mu=output["mu_real"],
-            mu_gen=output["mu_pred"],
-            logvar=output["logvar_real"],
-            logvar_gen=output["logvar_pred"],
         )
         return metrics
 

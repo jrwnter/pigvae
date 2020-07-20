@@ -13,6 +13,7 @@ from graphae.hyperparameter import add_arguments
 
 
 def main(hparams):
+    torch.set_num_threads(8)
     if not os.path.isdir(hparams.save_dir + "/run{}/".format(hparams.id)):
         print("Creating directory")
         os.mkdir(hparams.save_dir + "/run{}/".format(hparams.id))

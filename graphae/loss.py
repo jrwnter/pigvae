@@ -51,14 +51,12 @@ def edge_count_loss(adj, adj_gen):
     return loss
 
 
-def critic(mol_emb, mol_emb_gen, mask, mask_gen, adj, adj_gen, mu, mu_gen, logvar, logvar_gen):
+def critic(mol_emb, mol_emb_gen, mask, mask_gen, adj, adj_gen):
     loss = {
         "resemblance_loss": resemblance_loss(mol_emb, mol_emb_gen),
         "divergence_loss": divergence_loss(mol_emb),
         "node_count_loss": node_count_loss(mask, mask_gen),
         "edge_count_loss": edge_count_loss(adj, adj_gen),
-        "kld_loss_real": 0.1 * kld_loss(mu, logvar),
-        "kld_loss_pred": 0.1 * kld_loss(mu_gen, logvar_gen)
     }
     loss["total_loss"] = sum(loss.values())
     return loss

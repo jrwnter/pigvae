@@ -7,8 +7,9 @@ class Encoder(torch.nn.Module):
         super().__init__()
         self.graph_encoder = encoder.GraphEncoder(
             input_dim=hparams["num_atom_features"],
-            output_dim=hparams["node_dim"],
             hidden_dim=hparams["graph_encoder_hidden_dim"],
+            node_dim=hparams["node_dim"],
+            emb_dim=hparams["emb_dim"],
             num_layers=hparams["graph_encoder_num_layers"],
             batch_norm=hparams["batch_norm"],
             non_linearity="lrelu"
@@ -24,7 +25,7 @@ class Decoder(torch.nn.Module):
         super().__init__()
         self.meta_node_decoder = decoder.MetaNodeDecoder(
             num_nodes=hparams["max_num_nodes"],
-            emb_dim=hparams["node_dim"],
+            emb_dim=hparams["emb_dim"],
             meta_node_dim=hparams["meta_node_dim"],
             hidden_dim=hparams["meta_node_decoder_hidden_dim"],
             num_layers=hparams["meta_node_decoder_num_layers"],
@@ -59,20 +60,11 @@ class GraphAE(torch.nn.Module):
         super().__init__()
         self.encoder = Encoder(hparams)
         self.decoder = Decoder(hparams)
-        z_dim = hparams["node_dim"]
-        self.fc_mu = torch.nn.Linear(z_dim, z_dim)
-        self.fc_logvar = torch.nn.Linear(z_dim, z_dim)
 
     def forward(self, node_features, adj, mask):
         mol_emb = self.encoder(node_features, adj, mask)
-        mu = self.fc_mu(mol_emb)
-        logvar = self.fc_logvar(mol_emb)
-        mol_emb = reparameterize(mu, logvar)
-        node_features_, adj_, mask_ = self.decoder(mol_emb)
+        node_features_, adj_, mask_ = self.decoder(mol_emb.detach())
         mol_emb_ = self.encoder(node_features_, adj_, mask_)
-        mu_ = self.fc_mu(mol_emb_)
-        logvar_ = self.fc_logvar(mol_emb_)
-        mol_emb_ = reparameterize(mu_, logvar_)
         output = {
             "node_features_real": node_features,
             "node_features_pred": node_features_,
@@ -82,18 +74,7 @@ class GraphAE(torch.nn.Module):
             "mask_pred": mask_,
             "mol_emb_real": mol_emb,
             "mol_emb_pred": mol_emb_,
-            "mu_real": mu,
-            "mu_pred": mu_,
-            "logvar_real": logvar,
-            "logvar_pred": logvar_,
         }
 
         return output
-
-
-def reparameterize(mu, logvar):
-    std = torch.exp(0.5 * logvar)
-    eps = torch.randn_like(std)
-    return mu + eps * std
-
 

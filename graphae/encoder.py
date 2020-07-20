@@ -28,20 +28,20 @@ class GraphConv(torch.nn.Module):
 
 
 class GraphEncoder(torch.nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim, num_layers, batch_norm=False, non_linearity="relu"):
+    def __init__(self, input_dim, hidden_dim, node_dim, emb_dim, num_layers, batch_norm=False, non_linearity="relu"):
         super().__init__()
         self.num_layers = num_layers
         self.batch_norm = batch_norm
-        conv_layers = [GraphConv(input_dim, output_dim, hidden_dim, 3, batch_norm, non_linearity)]
-        conv_layers += [GraphConv(output_dim, output_dim, hidden_dim, 3, batch_norm, non_linearity) for _ in range(num_layers - 2)]
-        conv_layers += [GraphConv(output_dim, output_dim, hidden_dim, 3, batch_norm, non_linearity)]
+        conv_layers = [GraphConv(input_dim, node_dim, hidden_dim, 3, batch_norm, non_linearity)]
+        conv_layers += [GraphConv(node_dim, node_dim, hidden_dim, 3, batch_norm, non_linearity) for _ in range(num_layers - 2)]
+        conv_layers += [GraphConv(node_dim, node_dim, hidden_dim, 3, batch_norm, non_linearity)]
         self.conv_layers = torch.nn.ModuleList(conv_layers)
         self.fnn = FNN(
-            input_dim=num_layers * output_dim,
+            input_dim=num_layers * node_dim,
             hidden_dim=hidden_dim,
-            output_dim=output_dim,
+            output_dim=emb_dim,
             num_layers=3,
-            non_linearity="elu",
+            non_linearity="lrelu",
             batch_norm=batch_norm
         )
 
