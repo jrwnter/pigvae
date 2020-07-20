@@ -50,7 +50,7 @@ class PLGraphAE(pl.LightningModule):
 
     def configure_optimizers(self):
         opt_enc = torch.optim.Adam(self.graph_ae.encoder.parameters(), lr=0.00005, betas=(0.5, 0.99))
-        opt_dec = torch.optim.Adam(self.graph_ae.decoder.parameters(), lr=0.00002, betas=(0.5, 0.99))
+        opt_dec = torch.optim.Adam(self.graph_ae.decoder.parameters(), lr=0.00001, betas=(0.5, 0.99))
         #opt_all = torch.optim.Adam(self.graph_ae.parameters(), lr=0.0001)
 
         """ lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -69,7 +69,7 @@ class PLGraphAE(pl.LightningModule):
         node_features, adj, mask = batch
         output = self(node_features, adj, mask)
         noisy_node_features, noisy_adj, noisy_mask = add_noise(node_features.detach().clone(), adj.detach().clone(), mask.detach().clone(),
-                                                               std=0.1)
+                                                               std=0.05)
         #print(noisy_node_features)
         noisy_mol_emb_real = self.graph_ae.encoder(noisy_node_features.detach(), noisy_adj.detach(), noisy_mask.detach())
         #print(torch.norm(noisy_node_features - node_features, -1).mean(), torch.norm(noisy_adj - adj, -1).mean(), torch.norm(noisy_mask - mask, -1).mean())
