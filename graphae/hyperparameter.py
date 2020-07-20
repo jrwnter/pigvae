@@ -25,7 +25,7 @@ def add_arguments(parser):
     parser.set_defaults(progress_bar=False)
 
     # TRAINING
-    parser.add_argument("-b", "--batch_size", default=128, type=int)
+    parser.add_argument("-b", "--batch_size", default=256, type=int)
     parser.add_argument("--lr", default=0.0001, type=float)
     parser.add_argument("--lr_scheduler_factor", default=0.5, type=float)
     parser.add_argument("--lr_scheduler_patience", default=2, type=int)
