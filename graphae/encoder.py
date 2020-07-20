@@ -36,6 +36,15 @@ class GraphEncoder(torch.nn.Module):
         conv_layers += [GraphConv(output_dim, output_dim, hidden_dim, 3, batch_norm, non_linearity) for _ in range(num_layers - 2)]
         conv_layers += [GraphConv(output_dim, output_dim, hidden_dim, 3, batch_norm, non_linearity)]
         self.conv_layers = torch.nn.ModuleList(conv_layers)
+        self.fnn = FNN(
+            input_dim=num_layers * output_dim,
+            hidden_dim=hidden_dim,
+            output_dim=output_dim,
+            num_layers=3,
+            non_linearity="elu",
+            batch_norm=batch_norm
+        )
+
         if non_linearity == "relu":
             self.non_linearity = torch.nn.ReLU()
         elif non_linearity == "elu":
@@ -52,7 +61,7 @@ class GraphEncoder(torch.nn.Module):
             node_emb.append(x)
         stacked_node_emb = torch.stack(node_emb, dim=2)
         graph_emb = torch.sum(stacked_node_emb, dim=1).flatten(start_dim=1)
-        graph_emb = torch.tanh(graph_emb)
+        graph_emb = self.fnn(graph_emb)
         return graph_emb
 
 

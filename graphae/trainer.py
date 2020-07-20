@@ -5,7 +5,7 @@ import pytorch_lightning as pl
 import pandas as pd
 from graphae.graph_ae import GraphAE
 from graphae.data import MolecularGraphDataset
-from graphae.loss import critic, resemblance_loss
+from graphae.loss import critic, resemblance_loss, kld_loss
 from torch.nn.functional import mse_loss
 
 
@@ -51,7 +51,7 @@ class PLGraphAE(pl.LightningModule):
     def configure_optimizers(self):
         opt_enc = torch.optim.Adam(self.graph_ae.encoder.parameters(), lr=0.00001, betas=(0.5, 0.99))
         opt_dec = torch.optim.Adam(self.graph_ae.decoder.parameters(), lr=0.00002, betas=(0.5, 0.99))
-        opt_all = torch.optim.Adam(self.graph_ae.parameters(), lr=0.00001)
+        opt_all = torch.optim.Adam(self.graph_ae.parameters(), lr=0.0001)
 
         """ lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
@@ -63,19 +63,32 @@ class PLGraphAE(pl.LightningModule):
         scheduler = {
             'scheduler': lr_scheduler,
         }"""
-        return [opt_enc, opt_dec], []
+        return [opt_all], []
 
-    def training_step(self, batch, batch_nb, optimizer_idx):
+    def training_step(self, batch, batch_nb):
         node_features, adj, mask = batch
 
         output = self(node_features, adj, mask)
         # train encoder
-        if optimizer_idx == 0:
+        loss = mse_loss(
+            input=output["mol_emb_real"],
+            target=output["mol_emb_pred"]
+        )
+        loss -= 0.01 * mse_loss(
+            input=output["mol_emb_real"],
+            target=output["mol_emb_real"][torch.arange(len(output["mol_emb_real"]) - 1, -1, -1).type_as(output["mol_emb_real"]).long()]
+        )
+        loss += 0.01 * kld_loss(output["mu_real"], output["logvar_real"])
+        loss += 0.01 * kld_loss(output["mu_pred"], output["logvar_pred"])
+        metric = {"dec_loss": loss}
+
+        """if optimizer_idx == 0:
             loss = mse_loss(
-                input=output["mol_emb_real"],
-                target=output["mol_emb_pred"]
+                input=output["mol_emb_real"].requires_grad_(True),
+                target=output["mol_emb_pred"].detach()
             )
             loss = - loss
+            loss += 0.1 * kld_loss(output["mu_real"], output["logvar_real"])
             metric = {"enc_loss": loss}
 
         # train decoder
@@ -87,6 +100,7 @@ class PLGraphAE(pl.LightningModule):
             metric = {"dec_loss": loss}
 
         elif optimizer_idx == 2:
+            print("pro")
             loss = critic(
                 mol_emb=output["mol_emb_real"],
                 mol_emb_gen=output["mol_emb_pred"],
@@ -95,7 +109,8 @@ class PLGraphAE(pl.LightningModule):
                 adj=output["adj_real"],
                 adj_gen=output["adj_pred"],
             )["total_loss"]
-            metric = {"all_loss": loss}
+            loss += 0.1 * kld_loss(output["mu_pred"], output["logvar_pred"])
+            metric = {"all_loss": loss}"""
 
         output = {
             "loss": loss,
@@ -113,7 +128,11 @@ class PLGraphAE(pl.LightningModule):
             mask=output["mask_real"],
             mask_gen=output["mask_pred"],
             adj=output["adj_real"],
-            adj_gen=output["adj_pred"]
+            adj_gen=output["adj_pred"],
+            mu=output["mu_real"],
+            mu_gen=output["mu_pred"],
+            logvar=output["logvar_real"],
+            logvar_gen=output["logvar_pred"],
         )
         return metrics
 
