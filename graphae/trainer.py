@@ -49,7 +49,7 @@ class PLGraphAE(pl.LightningModule):
         )
 
     def configure_optimizers(self):
-        opt_enc = torch.optim.Adam(self.graph_ae.encoder.parameters(), lr=0.00004, betas=(0.5, 0.99))
+        opt_enc = torch.optim.Adam(self.graph_ae.encoder.parameters(), lr=0.00002, betas=(0.5, 0.99))
         opt_dec = torch.optim.Adam(self.graph_ae.decoder.parameters(), lr=0.00002, betas=(0.5, 0.99))
         #opt_all = torch.optim.Adam(self.graph_ae.parameters(), lr=0.0001)
 
