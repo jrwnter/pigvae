@@ -78,7 +78,7 @@ class PLGraphAE(pl.LightningModule):
         if optimizer_idx == 0:
             loss = triplet_margin_loss(
                 anchor=output["mol_emb_real"].requires_grad_(True),
-                positive=noisy_mol_emb_real.detach(),
+                positive=noisy_mol_emb_real,
                 negative=output["mol_emb_pred"].detach(),
                 margin=1.
             )
