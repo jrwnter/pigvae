@@ -27,7 +27,7 @@ class PLGraphAE(pl.LightningModule):
             self.eval_dataset = MolecularGraphDataset(graphs=graphs[:128], noise=False)
         else:
             graphs = np.load("1000000_16mnn_graphs.npy")
-            self.train_dataset = MolecularGraphDataset(graphs=graphs[self.hparams["num_eval_samples"]:], noise=False)
+            self.train_dataset = MolecularGraphDataset(graphs=graphs[self.hparams["num_eval_samples"]:], noise=True)
             self.eval_dataset = MolecularGraphDataset(graphs=graphs[:self.hparams["num_eval_samples"]], noise=False)
 
     def train_dataloader(self):
