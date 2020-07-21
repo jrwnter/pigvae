@@ -51,19 +51,23 @@ class PLGraphAE(pl.LightningModule):
     def configure_optimizers(self):
         opt_enc = torch.optim.Adam(self.graph_ae.encoder.parameters(), lr=0.00002, betas=(0.5, 0.99))
         opt_dec = torch.optim.Adam(self.graph_ae.decoder.parameters(), lr=0.00002, betas=(0.5, 0.99))
-        #opt_all = torch.optim.Adam(self.graph_ae.parameters(), lr=0.0001)
-
-        """ lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer=optimizer,
-            mode='min',
-            factor=self.hparams["lr_scheduler_factor"],
-            patience=self.hparams["lr_scheduler_patience"],
-            cooldown=self.hparams["lr_scheduler_cooldown"]
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer=opt_enc,
+            step_size=2,
+            gamma=0.5
         )
-        scheduler = {
+        scheduler_enc = {
             'scheduler': lr_scheduler,
-        }"""
-        return [opt_enc, opt_dec], []
+        }
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer=opt_dec,
+            step_size=2,
+            gamma=0.5
+        )
+        scheduler_dec = {
+            'scheduler': lr_scheduler,
+        }
+        return [opt_enc, opt_dec], [scheduler_enc, scheduler_dec]
 
     def training_step(self, batch, batch_nb, optimizer_idx):
         node_features, adj, mask = batch
