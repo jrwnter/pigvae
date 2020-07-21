@@ -139,11 +139,16 @@ def rdkit_mol_from_graph(graph):
 
 
 def add_noise(x, adj, mask, std=0.01):
-    x[x == 0] += torch.randn_like(x[x == 0]).abs().type_as(x) * std
-    x[x == 1] -= torch.randn_like(x[x == 1]).abs().type_as(x) * std
-    adj[adj == 0] += torch.randn_like(adj[adj == 0]).abs().type_as(x) * std
-    adj[adj == 1] -= torch.randn_like(adj[adj == 1]).abs().type_as(x) * std
-    mask = mask.float()
-    mask[mask == 0] += torch.randn_like(mask[mask == 0]).abs().type_as(x) * std
-    mask[mask == 1] -= torch.randn_like(mask[mask == 1]).abs().type_as(x) * std
+    noise_x = torch.randn_like(x).type_as(x) * std
+    noise_x[(x + noise_x > 1.0) | (x + noise_x < 0.0)] *= -1
+    x = x + noise_x
+
+    noise_adj = torch.randn_like(adj).type_as(adj) * std
+    noise_adj[(adj + noise_adj > 1.0) | (adj + noise_adj < 0.0)] *= -1
+    adj = adj + noise_adj
+
+    noise_mask = torch.randn_like(mask).type_as(mask) * std
+    noise_mask[(mask + noise_mask > 1.0) | (mask + noise_mask < 0.0)] *= -1
+    mask = mask + noise_mask
+
     return x, adj, mask
