@@ -72,7 +72,7 @@ class PLGraphAE(pl.LightningModule):
     def training_step(self, batch, batch_nb, optimizer_idx):
         node_features, adj, mask = batch
         output = self(node_features, adj, mask)
-        noisy_node_features, noisy_adj, noisy_mask = add_noise(node_features, adj, mask, std=0.2)
+        noisy_node_features, noisy_adj, noisy_mask = add_noise(node_features, adj, mask, std=0.3)
 
         noisy_mol_emb_real = self.graph_ae.encoder(noisy_node_features.detach(), noisy_adj.detach(), noisy_mask.detach())
         #print(torch.norm(noisy_node_features - node_features, -1).mean(), torch.norm(noisy_adj - adj, -1).mean(), torch.norm(noisy_mask - mask, -1).mean())
