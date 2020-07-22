@@ -50,7 +50,7 @@ class PLGraphAE(pl.LightningModule):
 
     def configure_optimizers(self):
         opt_enc = torch.optim.Adam(self.graph_ae.encoder.parameters(), lr=0.00002, betas=(0.5, 0.99))
-        opt_dec = torch.optim.Adam(self.graph_ae.decoder.parameters(), lr=0.00005, betas=(0.5, 0.99))
+        opt_dec = torch.optim.Adam(self.graph_ae.decoder.parameters(), lr=0.0001, betas=(0.5, 0.99))
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer=opt_enc,
             step_size=2,
@@ -72,7 +72,7 @@ class PLGraphAE(pl.LightningModule):
     def training_step(self, batch, batch_nb, optimizer_idx):
         node_features, adj, mask = batch
         noisy_node_features, noisy_adj, noisy_mask = add_noise(node_features, adj, mask,
-                                                               std=0.15 * (0.9 ** self.current_epoch))
+                                                               std=0.3 * (0.9 ** self.current_epoch))
         # train decoder
         if optimizer_idx == 0:
             mol_emb = self.graph_ae.encoder(node_features, adj, mask).detach()
