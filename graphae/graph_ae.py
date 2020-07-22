@@ -61,7 +61,8 @@ class GraphAE(torch.nn.Module):
         self.encoder = Encoder(hparams)
         self.decoder = Decoder(hparams)
 
-    def forward(self, node_features, adj, mask):
+
+    def forward(self, node_features, adj, mask, grad_mode="encode"):
         mol_emb = self.encoder(node_features, adj, mask)
         node_features_, adj_, mask_ = self.decoder(mol_emb.detach())
         mol_emb_ = self.encoder(node_features_, adj_, mask_)

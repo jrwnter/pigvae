@@ -71,35 +71,36 @@ class PLGraphAE(pl.LightningModule):
 
     def training_step(self, batch, batch_nb, optimizer_idx):
         node_features, adj, mask = batch
-        output = self(node_features, adj, mask)
         noisy_node_features, noisy_adj, noisy_mask = add_noise(node_features, adj, mask,
                                                                std=0.15 * (0.9 ** self.current_epoch))
-
-        noisy_mol_emb_real = self.graph_ae.encoder(noisy_node_features.detach(), noisy_adj.detach(), noisy_mask.detach())
-        #print(torch.norm(noisy_node_features - node_features, -1).mean(), torch.norm(noisy_adj - adj, -1).mean(), torch.norm(noisy_mask - mask, -1).mean())
-        mol_emb_real_shuffled = output["mol_emb_real"].detach()[torch.arange(len(output["mol_emb_real"]) - 1, -1, -1).type_as(noisy_mol_emb_real).long()]
-        # train encoder
+        # train decoder
         if optimizer_idx == 0:
+            mol_emb = self.graph_ae.encoder(node_features, adj, mask).requires_grad_(False)
+            node_features_pred, adj_pred, mask_pred = self.graph_ae.decoder(mol_emb).requires_grad_(True)
+            mol_emb_pred = self.graph_ae.encoder(node_features_pred, adj_pred, mask_pred).requires_grad_(False)
+            noisy_mol_emb_real = self.graph_ae.encoder(noisy_node_features, noisy_adj, noisy_mask).requires_grad_(False)
             loss = triplet_margin_loss(
-                anchor=output["mol_emb_real"].detach(),
-                positive=output["mol_emb_pred"].requires_grad_(True),
-                negative=noisy_mol_emb_real.detach(),
+                anchor=mol_emb,
+                positive=mol_emb_pred,
+                negative=noisy_mol_emb_real,
                 margin=1.
             )
-            mask = output["mask_pred"]
-            adj = output["adj_pred"]
-            loss += 0.1 * torch.min(torch.abs(mask - torch.ones_like(mask)),
-                                    torch.abs(mask - torch.zeros_like(mask))).mean()
-            loss += 0.1 * torch.min(torch.abs(adj - torch.ones_like(adj)),
-                                    torch.abs(adj - torch.zeros_like(adj))).mean()
+            loss += 0.5 * torch.min(torch.abs(mask_pred - torch.ones_like(mask_pred)),
+                                    torch.abs(mask_pred - torch.zeros_like(mask_pred))).mean()
+            loss += 0.5 * torch.min(torch.abs(adj_pred - torch.ones_like(adj_pred)),
+                                    torch.abs(adj_pred - torch.zeros_like(adj_pred))).mean()
             metric = {"dec_loss": loss}
 
-        # train decoder
+        # train encoder
         elif optimizer_idx == 1:
+            mol_emb = self.graph_ae.encoder(node_features, adj, mask).requires_grad_(True)
+            node_features_pred, adj_pred, mask_pred = self.graph_ae.decoder(mol_emb).requires_grad_(False)
+            mol_emb_pred = self.graph_ae.encoder(node_features_pred, adj_pred, mask_pred).requires_grad_(True)
+            noisy_mol_emb_real = self.graph_ae.encoder(noisy_node_features, noisy_adj, noisy_mask).requires_grad_(True)
             loss = triplet_margin_loss(
-                anchor=output["mol_emb_real"].requires_grad_(True),
+                anchor=mol_emb,
                 positive=noisy_mol_emb_real,
-                negative=output["mol_emb_pred"].detach(),
+                negative=mol_emb_pred,
                 margin=1.
             )
             metric = {"enc_loss": loss}
