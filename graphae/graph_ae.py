@@ -69,7 +69,7 @@ class SideTaskPredictor(torch.nn.Module):
         )
 
     def forward(self, emb):
-        return self(emb)
+        return self.fnn(emb)
 
 
 class GraphAE(torch.nn.Module):

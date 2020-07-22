@@ -49,7 +49,7 @@ class PLGraphAE(pl.LightningModule):
         )
 
     def configure_optimizers(self):
-        opt_enc = torch.optim.Adam(list(self.graph_ae.encoder.parameters()) + list(self.graph_ae.pridictor.parameters()),
+        opt_enc = torch.optim.Adam(list(self.graph_ae.encoder.parameters()) + list(self.graph_ae.predictor.parameters()),
                                    lr=0.00002, betas=(0.5, 0.99))
         opt_dec = torch.optim.Adam(self.graph_ae.decoder.parameters(), lr=0.0001, betas=(0.5, 0.99))
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
@@ -89,7 +89,7 @@ class PLGraphAE(pl.LightningModule):
             sparsity_loss = 0.1 * torch.min(torch.abs(mask_pred - torch.ones_like(mask_pred)),
                                             torch.abs(mask_pred - torch.zeros_like(mask_pred))).mean()
             sparsity_loss += 0.1 * torch.min(torch.abs(adj_pred - torch.ones_like(adj_pred)),
-                                            torch.abs(adj_pred - torch.zeros_like(adj_pred))).mean()
+                                             torch.abs(adj_pred - torch.zeros_like(adj_pred))).mean()
             loss += sparsity_loss
 
             log = {"dec_loss": loss, "sparsity_loss": sparsity_loss}
