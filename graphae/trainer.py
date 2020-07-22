@@ -73,25 +73,13 @@ class PLGraphAE(pl.LightningModule):
         node_features, adj, mask = batch
         output = self(node_features, adj, mask)
         noisy_node_features, noisy_adj, noisy_mask = add_noise(node_features, adj, mask,
-                                                               std=0.3 * (0.5 ** self.current_epoch))
+                                                               std=0.15 * (0.9 ** self.current_epoch))
 
         noisy_mol_emb_real = self.graph_ae.encoder(noisy_node_features.detach(), noisy_adj.detach(), noisy_mask.detach())
         #print(torch.norm(noisy_node_features - node_features, -1).mean(), torch.norm(noisy_adj - adj, -1).mean(), torch.norm(noisy_mask - mask, -1).mean())
         mol_emb_real_shuffled = output["mol_emb_real"].detach()[torch.arange(len(output["mol_emb_real"]) - 1, -1, -1).type_as(noisy_mol_emb_real).long()]
         # train encoder
         if optimizer_idx == 0:
-            loss = triplet_margin_loss(
-                anchor=output["mol_emb_real"].requires_grad_(True),
-                positive=noisy_mol_emb_real,
-                negative=output["mol_emb_pred"].detach(),
-                margin=1.
-            )
-            """print(torch.norm((output["mol_emb_real"] - noisy_mol_emb_real), dim=-1).mean().item(),
-                  torch.norm((output["mol_emb_real"] - mol_emb_real_shuffled), dim=-1).mean().item(), loss.item())"""
-            metric = {"enc_loss": loss}
-
-        # train decoder
-        elif optimizer_idx == 1:
             loss = triplet_margin_loss(
                 anchor=output["mol_emb_real"].detach(),
                 positive=output["mol_emb_pred"].requires_grad_(True),
@@ -105,6 +93,16 @@ class PLGraphAE(pl.LightningModule):
             loss += 0.1 * torch.min(torch.abs(adj - torch.ones_like(adj)),
                                     torch.abs(adj - torch.zeros_like(adj))).mean()
             metric = {"dec_loss": loss}
+
+        # train decoder
+        elif optimizer_idx == 1:
+            loss = triplet_margin_loss(
+                anchor=output["mol_emb_real"].requires_grad_(True),
+                positive=noisy_mol_emb_real,
+                negative=output["mol_emb_pred"].detach(),
+                margin=1.
+            )
+            metric = {"enc_loss": loss}
 
         output = {
             "loss": loss,
