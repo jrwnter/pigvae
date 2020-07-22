@@ -102,7 +102,7 @@ class PLGraphAE(pl.LightningModule):
             node_features_pred = node_features_pred.detach()
             adj_pred = adj_pred.detach()
             mask_pred = mask_pred.detach()
-            mol_emb_pred = self.graph_ae.encoder(node_features_pred, adj_pred, mask_pred)
+            mol_emb_pred = self.graph_ae.encoder(node_features_pred, adj_pred, mask_pred).detach()
             noisy_mol_emb_real = self.graph_ae.encoder(noisy_node_features, noisy_adj, noisy_mask)
             loss = triplet_margin_loss(
                 anchor=mol_emb,
