@@ -75,10 +75,10 @@ class PLGraphAE(pl.LightningModule):
                                                                std=0.15 * (0.9 ** self.current_epoch))
         # train decoder
         if optimizer_idx == 0:
-            mol_emb = self.graph_ae.encoder(node_features, adj, mask).requires_grad_(False)
-            node_features_pred, adj_pred, mask_pred = self.graph_ae.decoder(mol_emb).requires_grad_(True)
-            mol_emb_pred = self.graph_ae.encoder(node_features_pred, adj_pred, mask_pred).requires_grad_(False)
-            noisy_mol_emb_real = self.graph_ae.encoder(noisy_node_features, noisy_adj, noisy_mask).requires_grad_(False)
+            mol_emb = self.graph_ae.encoder(node_features, adj, mask).detach()
+            node_features_pred, adj_pred, mask_pred = self.graph_ae.decoder(mol_emb)
+            mol_emb_pred = self.graph_ae.encoder(node_features_pred, adj_pred, mask_pred).detach()
+            noisy_mol_emb_real = self.graph_ae.encoder(noisy_node_features, noisy_adj, noisy_mask).detach()
             loss = triplet_margin_loss(
                 anchor=mol_emb,
                 positive=mol_emb_pred,
@@ -93,10 +93,13 @@ class PLGraphAE(pl.LightningModule):
 
         # train encoder
         elif optimizer_idx == 1:
-            mol_emb = self.graph_ae.encoder(node_features, adj, mask).requires_grad_(True)
-            node_features_pred, adj_pred, mask_pred = self.graph_ae.decoder(mol_emb).requires_grad_(False)
-            mol_emb_pred = self.graph_ae.encoder(node_features_pred, adj_pred, mask_pred).requires_grad_(True)
-            noisy_mol_emb_real = self.graph_ae.encoder(noisy_node_features, noisy_adj, noisy_mask).requires_grad_(True)
+            mol_emb = self.graph_ae.encoder(node_features, adj, mask)
+            node_features_pred, adj_pred, mask_pred = self.graph_ae.decoder(mol_emb)
+            node_features_pred = node_features_pred.detach()
+            adj_pred = adj_pred.detach()
+            mask_pred = mask_pred.detach()
+            mol_emb_pred = self.graph_ae.encoder(node_features_pred, adj_pred, mask_pred)
+            noisy_mol_emb_real = self.graph_ae.encoder(noisy_node_features, noisy_adj, noisy_mask)
             loss = triplet_margin_loss(
                 anchor=mol_emb,
                 positive=noisy_mol_emb_real,
