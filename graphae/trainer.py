@@ -49,7 +49,8 @@ class PLGraphAE(pl.LightningModule):
         )
 
     def configure_optimizers(self):
-        opt_enc = torch.optim.Adam(self.graph_ae.encoder.parameters(), lr=0.00002, betas=(0.5, 0.99))
+        opt_enc = torch.optim.Adam(list(self.graph_ae.encoder.parameters()) + list(self.graph_ae.pridictor.parameters()),
+                                   lr=0.00002, betas=(0.5, 0.99))
         opt_dec = torch.optim.Adam(self.graph_ae.decoder.parameters(), lr=0.0001, betas=(0.5, 0.99))
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer=opt_enc,
@@ -85,10 +86,13 @@ class PLGraphAE(pl.LightningModule):
                 negative=noisy_mol_emb_real,
                 margin=0.5
             )
-            loss += 0.1 * torch.min(torch.abs(mask_pred - torch.ones_like(mask_pred)),
-                                    torch.abs(mask_pred - torch.zeros_like(mask_pred))).mean()
-            loss += 0.1 * torch.min(torch.abs(adj_pred - torch.ones_like(adj_pred)),
-                                    torch.abs(adj_pred - torch.zeros_like(adj_pred))).mean()
+            sparsity_loss = 0.1 * torch.min(torch.abs(mask_pred - torch.ones_like(mask_pred)),
+                                            torch.abs(mask_pred - torch.zeros_like(mask_pred))).mean()
+            sparsity_loss += 0.1 * torch.min(torch.abs(adj_pred - torch.ones_like(adj_pred)),
+                                            torch.abs(adj_pred - torch.zeros_like(adj_pred))).mean()
+            loss += sparsity_loss
+
+            log = {"dec_loss": loss, "sparsity_loss": sparsity_loss}
             metric = {"dec_loss": loss}
 
         # train encoder
@@ -106,12 +110,30 @@ class PLGraphAE(pl.LightningModule):
                 negative=mol_emb_pred,
                 margin=0.5
             )
+
+            prop_pred_real = self.graph_ae.predictor(mol_emb)
+            prop_pred_pred = self.graph_ae.predictor(mol_emb_pred)
+
+            prop_true_real = torch.stack((mask.sum(dim=-1), adj.triu(1).sum(axis=(1, 2))), dim=1)
+            prop_true_pred = torch.stack((mask_pred.sum(dim=-1), adj_pred.triu(1).sum(axis=(1, 2))), dim=1)
+
+            prop_loss = mse_loss(
+                input=prop_pred_real,
+                target=prop_true_real
+            )
+            prop_loss += mse_loss(
+                input=prop_pred_pred,
+                target=prop_true_pred
+            )
+            loss += prop_loss
+
             metric = {"enc_loss": loss}
+            log = {"enc_loss": loss, "prop_loss": prop_loss}
 
         output = {
             "loss": loss,
             "progress_bar": metric,
-            "log": metric
+            "log": log
         }
         return output
 

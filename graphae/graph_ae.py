@@ -1,5 +1,6 @@
 import torch
 from graphae import encoder, decoder
+from graphae.fully_connected import FNN
 
 
 class Encoder(torch.nn.Module):
@@ -55,12 +56,28 @@ class Decoder(torch.nn.Module):
         return node_features, adj, mask
 
 
+class SideTaskPredictor(torch.nn.Module):
+    def __init__(self, hparams):
+        super().__init__()
+        self.fnn = FNN(
+            input_dim=hparams["emb_dim"],
+            hidden_dim=1024,
+            output_dim=2,
+            num_layers=4,
+            non_linearity="elu",
+            batch_norm=True,
+        )
+
+    def forward(self, emb):
+        return self(emb)
+
+
 class GraphAE(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
         self.encoder = Encoder(hparams)
         self.decoder = Decoder(hparams)
-
+        self.predictor = SideTaskPredictor(hparams)
 
     def forward(self, node_features, adj, mask, grad_mode="encode"):
         mol_emb = self.encoder(node_features, adj, mask)
