@@ -67,7 +67,7 @@ class PLGraphAE(pl.LightningModule):
         scheduler_dec = {
             'scheduler': lr_scheduler,
         }
-        return [opt_enc, opt_dec], [scheduler_enc, scheduler_dec]
+        return [opt_dec, opt_enc], [scheduler_enc, scheduler_dec]
 
     def training_step(self, batch, batch_nb, optimizer_idx):
         node_features, adj, mask = batch
