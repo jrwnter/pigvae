@@ -72,7 +72,7 @@ class PLGraphAE(pl.LightningModule):
     def training_step(self, batch, batch_nb, optimizer_idx):
         node_features, adj, mask = batch
         noisy_node_features, noisy_adj, noisy_mask = add_noise(node_features, adj, mask,
-                                                               std=0.3 * (0.9 ** self.current_epoch))
+                                                               std=0.2 * (0.9 ** self.current_epoch))
         # train decoder
         if optimizer_idx == 0:
             mol_emb = self.graph_ae.encoder(node_features, adj, mask).detach()
@@ -83,11 +83,11 @@ class PLGraphAE(pl.LightningModule):
                 anchor=mol_emb,
                 positive=mol_emb_pred,
                 negative=noisy_mol_emb_real,
-                margin=1.
+                margin=0.5
             )
-            loss += 0.5 * torch.min(torch.abs(mask_pred - torch.ones_like(mask_pred)),
+            loss += 0.1 * torch.min(torch.abs(mask_pred - torch.ones_like(mask_pred)),
                                     torch.abs(mask_pred - torch.zeros_like(mask_pred))).mean()
-            loss += 0.5 * torch.min(torch.abs(adj_pred - torch.ones_like(adj_pred)),
+            loss += 0.1 * torch.min(torch.abs(adj_pred - torch.ones_like(adj_pred)),
                                     torch.abs(adj_pred - torch.zeros_like(adj_pred))).mean()
             metric = {"dec_loss": loss}
 
@@ -104,7 +104,7 @@ class PLGraphAE(pl.LightningModule):
                 anchor=mol_emb,
                 positive=noisy_mol_emb_real,
                 negative=mol_emb_pred,
-                margin=1.
+                margin=0.5
             )
             metric = {"enc_loss": loss}
 
