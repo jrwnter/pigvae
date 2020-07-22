@@ -77,7 +77,7 @@ class PLGraphAE(pl.LightningModule):
         if optimizer_idx == 0:
             mol_emb = self.graph_ae.encoder(node_features, adj, mask).detach()
             node_features_pred, adj_pred, mask_pred = self.graph_ae.decoder(mol_emb)
-            mol_emb_pred = self.graph_ae.encoder(node_features_pred, adj_pred, mask_pred).detach()
+            mol_emb_pred = self.graph_ae.encoder(node_features_pred, adj_pred, mask_pred)
             noisy_mol_emb_real = self.graph_ae.encoder(noisy_node_features, noisy_adj, noisy_mask).detach()
             loss = triplet_margin_loss(
                 anchor=mol_emb,
