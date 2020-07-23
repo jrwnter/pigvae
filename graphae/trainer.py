@@ -50,8 +50,8 @@ class PLGraphAE(pl.LightningModule):
 
     def configure_optimizers(self):
         opt_enc = torch.optim.Adam(list(self.graph_ae.encoder.parameters()) + list(self.graph_ae.predictor.parameters()),
-                                   lr=0.00002, betas=(0.5, 0.99))
-        opt_dec = torch.optim.Adam(self.graph_ae.decoder.parameters(), lr=0.0001, betas=(0.5, 0.99))
+                                   lr=0.0001)
+        opt_dec = torch.optim.Adam(self.graph_ae.decoder.parameters(), lr=0.0001)
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer=opt_enc,
             step_size=2,
@@ -68,27 +68,30 @@ class PLGraphAE(pl.LightningModule):
         scheduler_dec = {
             'scheduler': lr_scheduler,
         }
-        return [opt_dec, opt_enc], [scheduler_enc, scheduler_dec]
+        return [opt_dec, opt_enc], [scheduler_dec, scheduler_enc]
 
     def training_step(self, batch, batch_nb, optimizer_idx):
+        self.zero_grad()
         node_features, adj, mask = batch
         noisy_node_features, noisy_adj, noisy_mask = add_noise(node_features, adj, mask,
                                                                std=0.2 * (0.9 ** self.current_epoch))
         # train decoder
         if optimizer_idx == 0:
-            mol_emb = self.graph_ae.encoder(node_features, adj, mask).detach()
+            with torch.no_grad():
+                mol_emb = self.graph_ae.encoder(node_features, adj, mask)
             node_features_pred, adj_pred, mask_pred = self.graph_ae.decoder(mol_emb)
             mol_emb_pred = self.graph_ae.encoder(node_features_pred, adj_pred, mask_pred)
-            noisy_mol_emb_real = self.graph_ae.encoder(noisy_node_features, noisy_adj, noisy_mask).detach()
+            with torch.no_grad():
+                noisy_mol_emb_real = self.graph_ae.encoder(noisy_node_features, noisy_adj, noisy_mask).detach()
             loss = triplet_margin_loss(
                 anchor=mol_emb,
                 positive=mol_emb_pred,
                 negative=noisy_mol_emb_real,
                 margin=0.5
             )
-            sparsity_loss = 0.1 * torch.min(torch.abs(mask_pred - torch.ones_like(mask_pred)),
+            sparsity_loss = 0.5 * torch.min(torch.abs(mask_pred - torch.ones_like(mask_pred)),
                                             torch.abs(mask_pred - torch.zeros_like(mask_pred))).mean()
-            sparsity_loss += 0.1 * torch.min(torch.abs(adj_pred - torch.ones_like(adj_pred)),
+            sparsity_loss += 0.5 * torch.min(torch.abs(adj_pred - torch.ones_like(adj_pred)),
                                              torch.abs(adj_pred - torch.zeros_like(adj_pred))).mean()
             loss += sparsity_loss
 
@@ -98,11 +101,9 @@ class PLGraphAE(pl.LightningModule):
         # train encoder
         elif optimizer_idx == 1:
             mol_emb = self.graph_ae.encoder(node_features, adj, mask)
-            node_features_pred, adj_pred, mask_pred = self.graph_ae.decoder(mol_emb)
-            node_features_pred = node_features_pred.detach()
-            adj_pred = adj_pred.detach()
-            mask_pred = mask_pred.detach()
-            mol_emb_pred = self.graph_ae.encoder(node_features_pred, adj_pred, mask_pred).detach()
+            with torch.no_grad():
+                node_features_pred, adj_pred, mask_pred = self.graph_ae.decoder(mol_emb)
+            mol_emb_pred = self.graph_ae.encoder(node_features_pred, adj_pred, mask_pred)
             noisy_mol_emb_real = self.graph_ae.encoder(noisy_node_features, noisy_adj, noisy_mask)
             loss = triplet_margin_loss(
                 anchor=mol_emb,
@@ -117,18 +118,18 @@ class PLGraphAE(pl.LightningModule):
             prop_true_real = torch.stack((mask.sum(dim=-1), adj.triu(1).sum(axis=(1, 2))), dim=1)
             prop_true_pred = torch.stack((mask_pred.sum(dim=-1), adj_pred.triu(1).sum(axis=(1, 2))), dim=1)
 
-            prop_loss = mse_loss(
+            prop_loss_real = mse_loss(
                 input=prop_pred_real,
                 target=prop_true_real
             )
-            prop_loss += mse_loss(
+            prop_loss_pred = mse_loss(
                 input=prop_pred_pred,
                 target=prop_true_pred
             )
-            loss += prop_loss
+            loss += prop_loss_real + prop_loss_pred
 
             metric = {"enc_loss": loss}
-            log = {"enc_loss": loss, "prop_loss": prop_loss}
+            log = {"enc_loss": loss, "prop_loss_real": prop_loss_real, "prop_loss_pred": prop_loss_pred}
 
         output = {
             "loss": loss,
