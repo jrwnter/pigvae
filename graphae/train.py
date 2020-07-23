@@ -39,8 +39,8 @@ def train(hparams):
 
     model = GraphAE(hparams).to(device)
 
-    opt_enc = torch.optim.Adam(model.encoder.parameters(), lr=0.00002, betas=(0.8, 0.99))
-    opt_dec = torch.optim.Adam(model.decoder.parameters(), lr=0.00005, betas=(0.8, 0.99))
+    opt_enc = torch.optim.Adam(model.encoder.parameters(), lr=0.00002, betas=(0.5, 0.99))
+    opt_dec = torch.optim.Adam(model.decoder.parameters(), lr=0.00005, betas=(0.5, 0.99))
 
     step = 0
     log = {"dec_loss": [], "enc_loss": []}
@@ -90,7 +90,7 @@ def train(hparams):
             log["enc_loss"].append(enc_loss.item())
             log["dec_loss"].append(dec_loss.item())
 
-            if step % 50 == 0:
+            if step % 100 == 0:
                 metrics = []
                 for batch in eval_dataloader:
                     node_features, adj, mask = batch[0].to(device), batch[1].to(device), batch[2].to(device)
@@ -113,7 +113,7 @@ def train(hparams):
                 log = {"dec_loss": [], "enc_loss": []}
                 bla = 0
 
-        return output
+    return output
 
 
 if __name__ == '__main__':
