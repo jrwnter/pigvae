@@ -58,7 +58,6 @@ def train(hparams):
             )
 
 
-
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser = add_arguments(parser)
