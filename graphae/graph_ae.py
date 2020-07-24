@@ -72,11 +72,30 @@ class SideTaskPredictor(torch.nn.Module):
         return self.fnn(emb)
 
 
+class Descriminator(torch.nn.Module):
+    def __init__(self, hparams):
+        super().__init__()
+        self.fnn = FNN(
+            input_dim=hparams["emb_dim"],
+            hidden_dim=1024,
+            output_dim=1,
+            num_layers=4,
+            non_linearity="lrelu",
+            batch_norm=False,
+        )
+
+    def forward(self, emb):
+        out = self.fnn(emb)
+        out = torch.sigmoid(out)
+        return out
+
+
 class GraphAE(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
         self.encoder = Encoder(hparams)
         self.decoder = Decoder(hparams)
+        self.descriminator = Descriminator(hparams)
 
     def forward(self, node_features, adj, mask):
         mol_emb = self.encoder(node_features, adj, mask)
