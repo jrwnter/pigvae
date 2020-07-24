@@ -42,6 +42,8 @@ class Trainer(object):
 
         self.opt_enc = torch.optim.Adam(self.model.encoder.parameters(), lr=0.00005, betas=(0.5, 0.99))
         self.opt_dec = torch.optim.Adam(self.model.decoder.parameters(), lr=0.00005, betas=(0.5, 0.99))
+        self.scheduler_enc = torch.optim.lr_scheduler.StepLR(self.opt_enc, 100, 0.9)
+        self.scheduler_dec = torch.optim.lr_scheduler.StepLR(self.opt_dec, 100, 0.9)
         self.global_step = 0
         self.num_epochs = 100
 
@@ -56,6 +58,8 @@ class Trainer(object):
                 log["dec_loss"].append(dec_loss.item())
                 if self.global_step % 100 == 0:
                     self.evaluate(train_log=log, noise_std=noise_std)
+                    self.scheduler_enc.step()
+                    self.scheduler_dec.step()
                     torch.save(self.model, self.save_file)
                     log = {"dec_loss": [], "enc_loss": []}
 
