@@ -40,7 +40,7 @@ class Trainer(object):
 
         self.model = GraphAE(hparams).to(self.device)
 
-        self.opt_enc = torch.optim.Adam(self.model.encoder.parameters(), lr=0.00002, betas=(0.5, 0.99))
+        self.opt_enc = torch.optim.Adam(self.model.encoder.parameters(), lr=0.00005, betas=(0.5, 0.99))
         self.opt_dec = torch.optim.Adam(self.model.decoder.parameters(), lr=0.00005, betas=(0.5, 0.99))
         self.global_step = 0
         self.num_epochs = 100
@@ -73,14 +73,6 @@ class Trainer(object):
 
         node_features_pred, adj_pred, mask_pred = self.model.decoder(mol_emb.detach())
         mol_emb_pred = self.model.encoder(node_features_pred, adj_pred, mask_pred)
-        dec_loss = triplet_margin_loss(
-            anchor=mol_emb.detach(),
-            positive=mol_emb_pred,
-            negative=noisy_mol_emb.detach()
-        )
-
-        dec_loss.backward(retain_graph=True)
-        self.opt_dec.step()
 
         enc_loss = triplet_margin_loss(
             anchor=mol_emb,
@@ -88,8 +80,20 @@ class Trainer(object):
             negative=mol_emb_pred,
         )
 
-        enc_loss.backward()
+        enc_loss.backward(retain_graph=True)
         self.opt_enc.step()
+
+
+        dec_loss = triplet_margin_loss(
+            anchor=mol_emb.detach(),
+            positive=mol_emb_pred,
+            negative=noisy_mol_emb.detach()
+        )
+
+        dec_loss.backward()
+        self.opt_dec.step()
+
+
 
         return enc_loss, dec_loss, noise_std
 
