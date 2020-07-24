@@ -77,20 +77,11 @@ class GraphAE(torch.nn.Module):
         super().__init__()
         self.encoder = Encoder(hparams)
         self.decoder = Decoder(hparams)
-        z_dim = hparams["emb_dim"]
-        self.fc_mu = torch.nn.Linear(z_dim, z_dim)
-        self.fc_logvar = torch.nn.Linear(z_dim, z_dim)
 
     def forward(self, node_features, adj, mask):
         mol_emb = self.encoder(node_features, adj, mask)
-        """mu = self.fc_mu(mol_emb)
-        logvar = self.fc_logvar(mol_emb)
-        mol_emb = reparameterize(mu, logvar)"""
         node_features_, adj_, mask_ = self.decoder(mol_emb)
         mol_emb_ = self.encoder(node_features_, adj_, mask_)
-        """mu_ = self.fc_mu(mol_emb_)
-        logvar_ = self.fc_logvar(mol_emb_)
-        mol_emb_ = reparameterize(mu_, logvar_)"""
         output = {
             "node_features_real": node_features,
             "node_features_pred": node_features_,
@@ -100,10 +91,6 @@ class GraphAE(torch.nn.Module):
             "mask_pred": mask_,
             "mol_emb_real": mol_emb,
             "mol_emb_pred": mol_emb_,
-            #"mu_real": mu,
-            #"mu_pred": mu_,
-            #"logvar_real": logvar,
-            #"logvar_pred": logvar_,
         }
 
         return output
