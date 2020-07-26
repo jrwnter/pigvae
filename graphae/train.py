@@ -41,8 +41,8 @@ class Trainer(object):
 
         self.model = GraphAE(hparams).to(self.device)
 
-        self.opt_enc = torch.optim.Adam(self.model.encoder.parameters(), lr=0.00001, betas=(0.5, 0.99))
-        self.opt_dec = torch.optim.Adam(self.model.decoder.parameters(), lr=0.00005, betas=(0.5, 0.99))
+        self.opt_ae = torch.optim.Adam(self.model.encoder.parameters(), lr=0.00002, betas=(0.5, 0.99))
+        self.opt_disc = torch.optim.Adam(self.model.decoder.parameters(), lr=0.00005, betas=(0.5, 0.99))
         self.scheduler_enc = torch.optim.lr_scheduler.StepLR(self.opt_enc, 50, 0.9)
         self.scheduler_dec = torch.optim.lr_scheduler.StepLR(self.opt_dec, 50, 0.9)
         self.global_step = 0
@@ -65,6 +65,7 @@ class Trainer(object):
                     log = {"dec_loss": [], "enc_loss": []}
 
     def train_step(self, batch):
+
         noise_std = 0.05 + 0.3 * 0.9 ** (self.global_step / 1000)
         node_features, adj, mask = batch[0].to(self.device), batch[1].to(self.device), batch[2].to(self.device)
         node_features, adj, mask = add_noise(node_features, adj, mask, std=0.01)
@@ -72,6 +73,8 @@ class Trainer(object):
 
         self.opt_dec.zero_grad()
         self.opt_enc.zero_grad()
+
+        # AE
 
         mol_emb = self.model.encoder(node_features, adj, mask)
         noisy_mol_emb = self.model.encoder(noisy_node_features, noisy_adj, noisy_mask)
@@ -84,13 +87,13 @@ class Trainer(object):
             positive=noisy_mol_emb,
             negative=mol_emb_pred,
         )
-        real_pred = self.model.descriminator(mol_emb)
-        #noisy_pred = self.model.descriminator(noisy_mol_emb)
+        #real_pred = self.model.descriminator(mol_emb)
+        noisy_pred = self.model.descriminator(noisy_mol_emb)
         fake_pred = self.model.descriminator(mol_emb_pred)
         real_target = torch.ones([mol_emb.size(0), 1]).to(self.device)
         fake_target = torch.zeros([mol_emb.size(0), 1]).to(self.device)
         enc_loss += 0.5 * torch.nn.functional.binary_cross_entropy(
-            input=real_pred,
+            input=noisy_pred,
             target=real_target)
         enc_loss += 0.5 * torch.nn.functional.binary_cross_entropy(
             input=fake_pred,
@@ -107,6 +110,12 @@ class Trainer(object):
         dec_loss += torch.nn.functional.binary_cross_entropy(
             input=fake_pred,
             target=real_target)
+
+        sparsity_loss = 0.5 * torch.min(torch.abs(mask_pred - torch.ones_like(mask_pred)),
+                                        torch.abs(mask_pred - torch.zeros_like(mask_pred))).mean()
+        sparsity_loss += 0.5 * torch.min(torch.abs(adj_pred - torch.ones_like(adj_pred)),
+                                         torch.abs(adj_pred - torch.zeros_like(adj_pred))).mean()
+        dec_loss += sparsity_loss
 
         dec_loss.backward()
         self.opt_dec.step()
