@@ -93,6 +93,15 @@ class PLGraphAE(pl.LightningModule):
                                             torch.abs(mask_pred - torch.zeros_like(mask_pred))).mean()
             sparsity_loss += 0.5 * torch.min(torch.abs(adj_pred - torch.ones_like(adj_pred)),
                                              torch.abs(adj_pred - torch.zeros_like(adj_pred))).mean()
+            deg_pred = adj_pred.sum(-1)
+            sparsity_loss += 0.5 * torch.min(torch.stack(
+                (torch.abs(deg_pred - 0 * torch.ones_like(deg_pred)),
+                 torch.abs(deg_pred - 1 * torch.ones_like(deg_pred)),
+                 torch.abs(deg_pred - 2 * torch.ones_like(deg_pred)),
+                 torch.abs(deg_pred - 3 * torch.ones_like(deg_pred)),
+                 torch.abs(deg_pred - 4 * torch.ones_like(deg_pred))
+                 ), dim=0
+            ), dim=0)[0].mean()
             loss += sparsity_loss
 
             log = {"dec_loss": loss, "sparsity_loss": sparsity_loss}
