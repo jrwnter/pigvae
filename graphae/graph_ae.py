@@ -95,24 +95,12 @@ class GraphAE(torch.nn.Module):
         super().__init__()
         self.encoder = Encoder(hparams)
         self.decoder = Decoder(hparams)
-        self.descriminator = Descriminator(hparams)
 
     def forward(self, node_features, adj, mask):
         mol_emb = self.encoder(node_features, adj, mask)
         node_features_, adj_, mask_ = self.decoder(mol_emb)
-        mol_emb_ = self.encoder(node_features_, adj_, mask_)
-        output = {
-            "node_features_real": node_features,
-            "node_features_pred": node_features_,
-            "adj_real": adj,
-            "adj_pred": adj_,
-            "mask_real": mask,
-            "mask_pred": mask_,
-            "mol_emb_real": mol_emb,
-            "mol_emb_pred": mol_emb_,
-        }
 
-        return output
+        return node_features_, adj_, mask_
 
 
 def reparameterize(mu, logvar):
