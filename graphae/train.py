@@ -94,11 +94,11 @@ class Trainer(object):
             input=fake_pred,
             target=real_target)"""
 
-        """sparsity_loss = 0.5 * torch.min(torch.abs(mask_pred - torch.ones_like(mask_pred)),
+        sparsity_loss = 0.5 * torch.min(torch.abs(mask_pred - torch.ones_like(mask_pred)),
                                         torch.abs(mask_pred - torch.zeros_like(mask_pred))).mean()
         sparsity_loss += 0.5 * torch.min(torch.abs(adj_pred - torch.ones_like(adj_pred)),
                                          torch.abs(adj_pred - torch.zeros_like(adj_pred))).mean()
-        ae_loss += sparsity_loss"""
+        ae_loss += sparsity_loss
 
         ae_loss.backward()
         self.opt_ae.step()
