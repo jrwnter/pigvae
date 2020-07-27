@@ -31,6 +31,7 @@ def node_count_loss(mask, mask_gen):
     )
     return loss
 
+
 def kld_loss(mu, logvar):
     loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), axis=1)
     loss = torch.mean(loss)

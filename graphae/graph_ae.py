@@ -76,16 +76,17 @@ class Descriminator(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
         self.fnn = FNN(
-            input_dim=hparams["emb_dim"],
-            hidden_dim=1024,
+            input_dim=2 * hparams["emb_dim"],
+            hidden_dim=128,
             output_dim=1,
-            num_layers=4,
+            num_layers=3,
             non_linearity="lrelu",
             batch_norm=False,
         )
 
-    def forward(self, emb):
-        out = self.fnn(emb)
+    def forward(self, emb_ref, emb_query):
+        x = torch.cat((emb_ref, emb_query), dim=1)
+        out = self.fnn(x)
         out = torch.sigmoid(out)
         return out
 

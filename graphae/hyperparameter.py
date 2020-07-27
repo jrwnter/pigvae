@@ -39,22 +39,20 @@ def add_arguments(parser):
     parser.set_defaults(batch_norm=False)
 
     # ENCODER
-    parser.add_argument("--emb_dim", default=512, type=int)
+    parser.add_argument("--emb_dim", default=256, type=int)
     parser.add_argument("--node_dim", default=256, type=int)
-    parser.add_argument("--graph_encoder_hidden_dim", default=512, type=int)
-    parser.add_argument("--graph_encoder_num_layers", default=7, type=int)
-    parser.add_argument("--node_aggregator_num_layers", default=3, type=int)
-    parser.add_argument("--node_aggregator_hidden_dim", default=1024, type=int)
+    parser.add_argument("--graph_encoder_hidden_dim", default=256, type=int)
+    parser.add_argument("--graph_encoder_num_layers", default=2, type=int)
 
     # DECODER
-    parser.add_argument("--meta_node_dim", default=256, type=int)
-    parser.add_argument("--meta_node_decoder_hidden_dim", default=1024, type=int)
+    parser.add_argument("--meta_node_dim", default=64, type=int)
+    parser.add_argument("--meta_node_decoder_hidden_dim", default=256, type=int)
     parser.add_argument("--meta_node_decoder_num_layers", default=3, type=int)
 
-    parser.add_argument("--edge_predictor_hidden_dim", default=1024, type=int)
+    parser.add_argument("--edge_predictor_hidden_dim", default=256, type=int)
     parser.add_argument("--edge_predictor_num_layers", default=3, type=int)
 
-    parser.add_argument("--node_decoder_hidden_dim", default=1024, type=int)
+    parser.add_argument("--node_decoder_hidden_dim", default=256, type=int)
     parser.add_argument("--node_decoder_num_layers", default=3, type=int)
 
     # DATA
