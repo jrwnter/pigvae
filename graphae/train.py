@@ -44,72 +44,79 @@ class Trainer(object):
 
         self.model = GraphVAEGAN(hparams).to(self.device)
 
-        self.opt_g = torch.optim.Adam(list(self.model.generator.parameters()) + list(self.model.encoder.parameters()), lr=0.00005, betas=(0.5, 0.99))
+        self.opt_g = torch.optim.Adam(self.model.generator.parameters(), lr=0.00005, betas=(0.5, 0.99))
         self.opt_d = torch.optim.Adam(self.model.discriminator.parameters(), lr=0.00005, betas=(0.5, 0.99))
+        self.opt_e = torch.optim.Adam(self.model.encoder.parameters(), lr=0.00005, betas=(0.5, 0.99))
         self.global_step = 0
         self.num_epochs = 10000
 
         self.criterion = torch.nn.BCELoss()
 
     def train(self):
-        log = {"gen_loss": [], "disc_loss": [], "g_loss_kld": [], "g_loss_gan": [], "g_loss_rec": []}
+        log = {"g_loss": [], "d_loss": [], "e_loss_kld": [], "e_loss_rec": []}
         for epoch in range(self.num_epochs):
             print("Epoch: ", epoch)
             for batch in self.train_dataloader:
                 self.global_step += 1
-                if self.global_step % 2 == 0:
-                    disc_loss, gen_loss, g_loss_kld, g_loss_gan, g_loss_rec = self.train_step(batch, train_disc=True)
-                    log["disc_loss"].append(disc_loss.item())
+                if self.global_step % 1 == 0:
+                    d_loss, g_loss, e_loss_kld, e_loss_rec = self.train_step(batch, train_gen=True)
+                    log["g_loss"].append(g_loss.item())
                 else:
-                    gen_loss, g_loss_kld, g_loss_gan, g_loss_rec = self.train_step(batch, train_disc=False)
-                log["gen_loss"].append(gen_loss.item())
-                log["g_loss_kld"].append(g_loss_kld.item())
-                log["g_loss_gan"].append(g_loss_gan.item())
-                log["g_loss_rec"].append(g_loss_rec.item())
+                    d_loss, e_loss_kld, e_loss_rec = self.train_step(batch, train_gen=False)
+                log["d_loss"].append(d_loss.item())
+                log["e_loss_kld"].append(e_loss_kld.item())
+                log["e_loss_rec"].append(e_loss_rec.item())
                 if self.global_step % 100 == 0:
                     self.evaluate(train_log=log)
                     torch.save(self.model, self.save_file)
-                    log = {"gen_loss": [], "disc_loss": [], "g_loss_kld": [], "g_loss_gan": [], "g_loss_rec": []}
+                    log = {"g_loss": [], "d_loss": [], "e_loss_kld": [], "e_loss_rec": []}
 
-    def train_step(self, batch, train_disc):
+    def train_step(self, batch, train_gen):
         nodes, adj, mask = batch[0].to(self.device), batch[1].to(self.device), batch[2].to(self.device)
-        real_target = torch.ones(nodes.size(0)).to(self.device)
-        fake_target = torch.zeros(nodes.size(0)).to(self.device)
         z_pri = torch.randn([adj.shape[0], self.hparams["emb_dim"]]).to(self.device)
 
         # Disciminator
 
         self.opt_d.zero_grad()
-        if train_disc:
-            with torch.no_grad():
-                z_enc = self.model.encoder(nodes, adj)
-                mu, log_var = z_enc[:, :self.hparams["emb_dim"]], z_enc[:, self.hparams["emb_dim"]:]
-                z_enc = reparameterize(mu, log_var)
+        with torch.no_grad():
+            z_enc = self.model.encoder(nodes, adj)
+            mu, log_var = z_enc[:, :self.hparams["emb_dim"]], z_enc[:, self.hparams["emb_dim"]:]
+            z_enc = reparameterize(mu, log_var)
 
-                nodes_fake_enc, adj_fake_enc = self.model.generator(z_enc)
-                nodes_fake_enc, adj_fake_enc = postprocess(nodes_fake_enc, "hard_gumbel"), postprocess(adj_fake_enc, "hard_gumbel")
-                adj_fake_enc = adj_fake_enc[:, :, :, 1]
-                mask_fake_enc = nodes_fake_enc[:, :, -1] == 0
-                nodes_fake_enc = nodes_fake_enc[:, :, :-1]
+            nodes_fake_enc, adj_fake_enc = self.model.generator(z_enc)
+            nodes_fake_enc, adj_fake_enc = postprocess(nodes_fake_enc, "hard_gumbel"), postprocess(adj_fake_enc, "hard_gumbel")
+            adj_fake_enc = adj_fake_enc[:, :, :, 1]
+            mask_fake_enc = nodes_fake_enc[:, :, -1] == 0
+            nodes_fake_enc = nodes_fake_enc[:, :, :-1]
 
-                nodes_fake_pri, adj_fake_pri = self.model.generator(z_pri)
-                nodes_fake_pri, adj_fake_pri = postprocess(nodes_fake_pri, "hard_gumbel"), postprocess(adj_fake_pri, "hard_gumbel")
-                adj_fake_pri = adj_fake_pri[:, :, :, 1]
-                mask_fake_pri = nodes_fake_pri[:, :, -1] == 0
-                nodes_fake_pri = nodes_fake_pri[:, :, :-1]
+            nodes_fake_pri, adj_fake_pri = self.model.generator(z_pri)
+            nodes_fake_pri, adj_fake_pri = postprocess(nodes_fake_pri, "hard_gumbel"), postprocess(adj_fake_pri, "hard_gumbel")
+            adj_fake_pri = adj_fake_pri[:, :, :, 1]
+            mask_fake_pri = nodes_fake_pri[:, :, -1] == 0
+            nodes_fake_pri = nodes_fake_pri[:, :, :-1]
 
-            d_logits_real, d_features_real = self.model.discriminator(nodes, adj, None)
-            d_logits_fake_enc, d_features_fake_enc = self.model.discriminator(nodes_fake_enc, adj_fake_enc, None)
-            d_logits_fake_pri, d_features_fake_pri = self.model.discriminator(nodes_fake_pri, adj_fake_pri, None)
+        d_logits_real, d_features_real = self.model.discriminator(nodes, adj, None)
+        d_logits_fake_enc, d_features_fake_enc = self.model.discriminator(nodes_fake_enc, adj_fake_enc, None)
+        d_logits_fake_pri, d_features_fake_pri = self.model.discriminator(nodes_fake_pri, adj_fake_pri, None)
 
-            d_loss = self.criterion(d_logits_real, real_target) + self.criterion(d_logits_fake_enc, fake_target) + self.criterion(d_logits_fake_pri, fake_target)
-            d_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.discriminator.parameters(), 0.5)
-            self.opt_d.step()
+        # Compute loss for gradient penalty.
+        eps = torch.rand(d_logits_real.size(0), 1, 1).to(self.device)
+        x_int0 = (eps * nodes + (1. - eps) * nodes_fake_enc).requires_grad_(True)
+        x_int1 = (eps * adj + (1. - eps) * adj_fake_enc).requires_grad_(True)
+        x_int2 = (eps * nodes + (1. - eps) * nodes_fake_pri).requires_grad_(True)
+        x_int3 = (eps * adj + (1. - eps) * adj_fake_pri).requires_grad_(True)
+        grad_enc, _ = self.model.discriminator(x_int0, x_int1, None)
+        grad_pri, _ = self.model.discriminator(x_int2, x_int3, None)
+        d_loss_gp = self.gradient_penalty(grad_enc, x_int0) + self.gradient_penalty(grad_enc, x_int1) + self.gradient_penalty(grad_pri, x_int2) + self.gradient_penalty(grad_pri, x_int3)
 
-        # Generator
-        self.opt_g.zero_grad()
+        d_loss = -torch.mean(d_logits_real) + torch.mean(d_logits_fake_enc) + torch.mean(d_logits_fake_pri) + 10 * d_loss_gp
+        d_loss.backward()
+        #torch.nn.utils.clip_grad_norm_(self.model.discriminator.parameters(), 0.5)
+        self.opt_d.step()
 
+        # Encoder
+
+        self.opt_e.zero_grad()
         z_enc = self.model.encoder(nodes, adj)
         mu, log_var = z_enc[:, :self.hparams["emb_dim"]], z_enc[:, self.hparams["emb_dim"]:]
         z_enc = reparameterize(mu, log_var)
@@ -121,39 +128,52 @@ class Trainer(object):
         mask_fake_enc = nodes_fake_enc[:, :, -1] == 0
         nodes_fake_enc = nodes_fake_enc[:, :, :-1]
 
-        nodes_fake_enc_d, adj_fake_enc_d = self.model.generator(z_enc.detach())
-        nodes_fake_enc_d, adj_fake_enc_d = postprocess(nodes_fake_enc_d, "hard_gumbel"), postprocess(adj_fake_enc_d,
-                                                                                               "hard_gumbel")
-        adj_fake_enc_d = adj_fake_enc_d[:, :, :, 1]
-        mask_fake_enc_d = nodes_fake_enc_d[:, :, -1] == 0
-        nodes_fake_enc_d = nodes_fake_enc_d[:, :, :-1]
-
-        nodes_fake_pri, adj_fake_pri = self.model.generator(z_pri)
-        nodes_fake_pri, adj_fake_pri = postprocess(nodes_fake_pri, "hard_gumbel"), postprocess(adj_fake_pri,
-                                                                                               "hard_gumbel")
-        adj_fake_pri = adj_fake_pri[:, :, :, 1]
-        mask_fake_pri = nodes_fake_pri[:, :, -1] == 0
-        nodes_fake_pri = nodes_fake_pri[:, :, :-1]
-
         d_logits_real, d_features_real = self.model.discriminator(nodes, adj, None)
         d_logits_fake_enc, d_features_fake_enc = self.model.discriminator(nodes_fake_enc, adj_fake_enc, None)
-        d_logits_fake_enc_d, d_features_fake_enc_d = self.model.discriminator(nodes_fake_enc_d, adj_fake_enc_d, None)
-        d_logits_fake_pri, d_features_fake_pri = self.model.discriminator(nodes_fake_pri, adj_fake_pri, None)
 
-        g_loss_kld = kld_loss(mu, log_var)
-        g_loss_gan = self.criterion(d_logits_fake_enc_d, real_target) + self.criterion(d_logits_fake_pri, real_target)
-        g_loss_rec = mse_loss(d_features_fake_enc, d_features_real)
+        e_loss_kld = kld_loss(mu, log_var)
+        e_loss_rec = mse_loss(d_features_fake_enc, d_features_real)
+        e_loss = e_loss_kld + e_loss_rec
 
-        g_loss = g_loss_kld + g_loss_gan + 10 * g_loss_rec
+        e_loss.backward()
+        self.opt_e.step()
 
-        g_loss.backward()
-        torch.nn.utils.clip_grad_norm_(list(self.model.generator.parameters()) + list(self.model.encoder.parameters()), 0.5)
-        self.opt_g.step()
+        # Generator
+        self.opt_g.zero_grad()
 
-        if train_disc:
-            return d_loss, g_loss, g_loss_kld, g_loss_gan, g_loss_rec
-        else:
-            return g_loss, g_loss_kld, g_loss_gan, g_loss_rec
+        if train_gen:
+            with torch.no_grad():
+                z_enc = self.model.encoder(nodes, adj)
+                mu, log_var = z_enc[:, :self.hparams["emb_dim"]], z_enc[:, self.hparams["emb_dim"]:]
+                z_enc = reparameterize(mu, log_var)
+
+
+            nodes_fake_enc_d, adj_fake_enc_d = self.model.generator(z_enc.detach())
+            nodes_fake_enc_d, adj_fake_enc_d = postprocess(nodes_fake_enc_d, "hard_gumbel"), postprocess(adj_fake_enc_d,
+                                                                                                   "hard_gumbel")
+            adj_fake_enc_d = adj_fake_enc_d[:, :, :, 1]
+            mask_fake_enc_d = nodes_fake_enc_d[:, :, -1] == 0
+            nodes_fake_enc_d = nodes_fake_enc_d[:, :, :-1]
+
+            nodes_fake_pri, adj_fake_pri = self.model.generator(z_pri)
+            nodes_fake_pri, adj_fake_pri = postprocess(nodes_fake_pri, "hard_gumbel"), postprocess(adj_fake_pri,
+                                                                                                   "hard_gumbel")
+            adj_fake_pri = adj_fake_pri[:, :, :, 1]
+            mask_fake_pri = nodes_fake_pri[:, :, -1] == 0
+            nodes_fake_pri = nodes_fake_pri[:, :, :-1]
+
+
+            d_logits_fake_enc_d, d_features_fake_enc_d = self.model.discriminator(nodes_fake_enc_d, adj_fake_enc_d, None)
+            d_logits_fake_pri, d_features_fake_pri = self.model.discriminator(nodes_fake_pri, adj_fake_pri, None)
+
+
+            g_loss = -torch.mean(d_logits_fake_enc_d) + torch.mean(d_logits_fake_pri)
+
+            g_loss.backward()
+            #torch.nn.utils.clip_grad_norm_(list(self.model.generator.parameters()) + list(self.model.encoder.parameters()), 0.5)
+            self.opt_g.step()
+            return d_loss, g_loss, e_loss_kld, e_loss_rec
+        return d_loss, e_loss_kld, e_loss_rec
 
     def evaluate(self, train_log):
         """with torch.no_grad():
