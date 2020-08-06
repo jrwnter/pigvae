@@ -16,7 +16,7 @@ class Encoder(torch.nn.Module):
             non_linearity="lrelu"
         )
 
-    def forward(self, node_features, adj, mask):
+    def forward(self, node_features, adj, mask=None):
         mol_emb = self.graph_encoder(node_features, adj, mask)
         return mol_emb
 
@@ -48,8 +48,8 @@ class Decoder(torch.nn.Module):
             num_node_features=hparams["num_atom_features"]
         )
 
-    def forward(self, emb):
-        x = self.fnn(emb)
+    def forward(self, z):
+        x = self.fnn(z)
         edge_logits = self.edge_predictor(x)
         node_logits = self.node_predictor(x)
         return node_logits, edge_logits
@@ -69,23 +69,30 @@ class Descriminator(torch.nn.Module):
             batch_norm=False,
         )
 
-    def forward(self, node, adj, mask):
-        x = self.encoder(node, adj, mask)
-        x = self.fnn(x)
-        return x
+    def forward(self, node, adj, mask=None):
+        h = self.encoder(node, adj, mask)
+        x = self.fnn(h)
+        x = torch.sigmoid(x).squeeze()
+        return x, h
 
 
-class GraphAE(torch.nn.Module):
+class GraphVAEGAN(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
-        self.encoder = Encoder(hparams)
-        self.decoder = Decoder(hparams)
+        self.hparams = hparams
+        self.generator = Decoder(hparams)
+        self.discriminator = Descriminator(hparams)
+        hparams2 = hparams.copy()
+        hparams2["emb_dim"] *= 2
+        self.encoder = Encoder(hparams2)
 
-    def forward(self, node_features, adj, mask):
+    def forward(self, node_features, adj, mask=None):
         mol_emb = self.encoder(node_features, adj, mask)
-        node_features_, adj_, mask_ = self.decoder(mol_emb)
+        mu, log_var = mol_emb[:, :128], mol_emb[:, 128:]
+        mol_emb = reparameterize(mu, log_var)
+        node_features_, adj_ = self.generator(mol_emb)
 
-        return node_features_, adj_, mask_
+        return node_features_, adj_, mol_emb
 
 
 def reparameterize(mu, logvar):
