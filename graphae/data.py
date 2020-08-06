@@ -44,7 +44,7 @@ class MolecularGraphDataset(Dataset):
 
     def __getitem__(self, idx):
         graph = self.graphs[idx]
-        x = torch.from_numpy(graph[:, :24])
+        x = torch.from_numpy(graph[:, :11])
         adj = torch.from_numpy(graph[:, 24:40])
         mask = torch.from_numpy(graph[:, 40])
         if self.noise:

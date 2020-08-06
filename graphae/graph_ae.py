@@ -12,7 +12,7 @@ class Encoder(torch.nn.Module):
             node_dim=hparams["node_dim"],
             emb_dim=hparams["emb_dim"],
             num_layers=hparams["graph_encoder_num_layers"],
-            batch_norm=hparams["batch_norm"],
+            batch_norm=False,
             non_linearity="lrelu"
         )
 
@@ -24,24 +24,24 @@ class Encoder(torch.nn.Module):
 class Decoder(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
-        self.meta_node_decoder = decoder.MetaNodeDecoder(
-            num_nodes=hparams["max_num_nodes"],
-            emb_dim=hparams["emb_dim"],
-            meta_node_dim=hparams["meta_node_dim"],
+        self.fnn = FNN(
+            input_dim=hparams["emb_dim"],
             hidden_dim=hparams["meta_node_decoder_hidden_dim"],
+            output_dim=hparams["meta_node_decoder_hidden_dim"],
             num_layers=hparams["meta_node_decoder_num_layers"],
+            non_linearity="relu",
             batch_norm=hparams["batch_norm"],
         )
         self.edge_predictor = decoder.EdgePredictor(
             num_nodes=hparams["max_num_nodes"],
-            meta_node_dim=hparams["meta_node_dim"],
+            input_dim=hparams["meta_node_decoder_hidden_dim"],
             hidden_dim=hparams["edge_predictor_hidden_dim"],
             num_layers=hparams["edge_predictor_num_layers"],
             batch_norm=hparams["batch_norm"],
         )
         self.node_predictor = decoder.NodePredictor(
             num_nodes=hparams["max_num_nodes"],
-            meta_node_dim=hparams["meta_node_dim"],
+            input_dim=hparams["meta_node_decoder_hidden_dim"],
             hidden_dim=hparams["node_decoder_hidden_dim"],
             num_layers=hparams["node_decoder_num_layers"],
             batch_norm=hparams["batch_norm"],
@@ -49,46 +49,31 @@ class Decoder(torch.nn.Module):
         )
 
     def forward(self, emb):
-        meta_node_emb = self.meta_node_decoder(emb)
-        adj = self.edge_predictor(meta_node_emb)
-        node_features = self.node_predictor(meta_node_emb)
-        mask, node_features = node_features[:, :, -1], node_features[:, :, :-1]
-        return node_features, adj, mask
-
-
-class SideTaskPredictor(torch.nn.Module):
-    def __init__(self, hparams):
-        super().__init__()
-        self.fnn = FNN(
-            input_dim=hparams["emb_dim"],
-            hidden_dim=1024,
-            output_dim=2,
-            num_layers=4,
-            non_linearity="elu",
-            batch_norm=True,
-        )
-
-    def forward(self, emb):
-        return self.fnn(emb)
+        x = self.fnn(emb)
+        edge_logits = self.edge_predictor(x)
+        node_logits = self.node_predictor(x)
+        return node_logits, edge_logits
 
 
 class Descriminator(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
+        self.encoder = Encoder(hparams)
         self.fnn = FNN(
-            input_dim=2 * hparams["emb_dim"],
-            hidden_dim=128,
+            #input_dim=hparams["graph_encoder_num_layers"] * hparams["node_dim"],
+            input_dim=hparams["emb_dim"],
+            hidden_dim=256,
             output_dim=1,
             num_layers=3,
             non_linearity="lrelu",
             batch_norm=False,
         )
 
-    def forward(self, emb_ref, emb_query):
-        x = torch.cat((emb_ref, emb_query), dim=1)
-        out = self.fnn(x)
-        out = torch.sigmoid(out)
-        return out
+    def forward(self, node, adj, mask):
+        x = self.encoder(node, adj, mask)
+        x = self.fnn(x)
+        x = torch.sigmoid(x)
+        return x
 
 
 class GraphAE(torch.nn.Module):

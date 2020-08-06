@@ -52,7 +52,7 @@ class GraphEncoder(torch.nn.Module):
         elif non_linearity == "lrelu":
             self.non_linearity = torch.nn.LeakyReLU()
 
-    def forward(self, x, adj, mask=None):
+    def forward(self, x, adj, mask):
         node_emb = []
         for i in range(self.num_layers):
             if i > 0:
