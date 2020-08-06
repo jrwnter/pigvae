@@ -45,8 +45,8 @@ class Trainer(object):
         self.generator = Decoder(hparams).to(self.device)
         self.descriminator = Descriminator(hparams).to(self.device)
 
-        self.opt_gen = torch.optim.Adam(self.generator.parameters(), lr=0.0001, betas=(0.5, 0.99))
-        self.opt_disc = torch.optim.Adam(self.descriminator.parameters(), lr=0.0001, betas=(0.5, 0.99))
+        self.opt_gen = torch.optim.Adam(self.generator.parameters(), lr=0.00005, betas=(0.5, 0.99))
+        self.opt_disc = torch.optim.Adam(self.descriminator.parameters(), lr=0.00005, betas=(0.5, 0.99))
         self.global_step = 0
         self.num_epochs = 10000
 
@@ -88,7 +88,7 @@ class Trainer(object):
         x_int0 = (eps * nodes + (1. - eps) * nodes_pred).requires_grad_(True)
         x_int1 = (eps * adj + (1. - eps) * adj_pred).requires_grad_(True)
         grad = self.descriminator(x_int0, x_int1, None)
-        d_loss_gp = self.gradient_penalty(grad, x_int0) #+ self.gradient_penalty(grad, x_int1)
+        d_loss_gp = self.gradient_penalty(grad, x_int0) + self.gradient_penalty(grad, x_int1)
 
         disc_loss = -torch.mean(real_pred) + torch.mean(fake_pred) + 10 * d_loss_gp
 

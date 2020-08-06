@@ -72,7 +72,6 @@ class Descriminator(torch.nn.Module):
     def forward(self, node, adj, mask):
         x = self.encoder(node, adj, mask)
         x = self.fnn(x)
-        x = torch.sigmoid(x)
         return x
 
 
