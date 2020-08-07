@@ -58,7 +58,7 @@ class Trainer(object):
             print("Epoch: ", epoch)
             for batch in self.train_dataloader:
                 self.global_step += 1
-                if self.global_step % 1 == 0:
+                if self.global_step % 5 == 0:
                     d_loss, g_loss, e_loss_kld, e_loss_rec = self.train_step(batch, train_gen=True)
                     log["g_loss"].append(g_loss.item())
                 else:
@@ -109,7 +109,7 @@ class Trainer(object):
         grad_pri, _ = self.model.discriminator(x_int2, x_int3, None)
         d_loss_gp = self.gradient_penalty(grad_enc, x_int0) + self.gradient_penalty(grad_enc, x_int1) + self.gradient_penalty(grad_pri, x_int2) + self.gradient_penalty(grad_pri, x_int3)
 
-        d_loss = -torch.mean(d_logits_real) + torch.mean(d_logits_fake_enc) + torch.mean(d_logits_fake_pri) + 10 * d_loss_gp
+        d_loss = -torch.mean(d_logits_real) + 0.5 * torch.mean(d_logits_fake_enc) + 0.5 * torch.mean(d_logits_fake_pri) + 10 * d_loss_gp
         d_loss.backward()
         #torch.nn.utils.clip_grad_norm_(self.model.discriminator.parameters(), 0.5)
         self.opt_d.step()
@@ -167,7 +167,7 @@ class Trainer(object):
             d_logits_fake_pri, d_features_fake_pri = self.model.discriminator(nodes_fake_pri, adj_fake_pri, None)
 
 
-            g_loss = -torch.mean(d_logits_fake_enc_d) + torch.mean(d_logits_fake_pri)
+            g_loss = -torch.mean(d_logits_fake_enc_d) - torch.mean(d_logits_fake_pri)
 
             g_loss.backward()
             #torch.nn.utils.clip_grad_norm_(list(self.model.generator.parameters()) + list(self.model.encoder.parameters()), 0.5)
