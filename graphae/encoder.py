@@ -14,12 +14,13 @@ class GraphConv(torch.nn.Module):
             num_layers=num_mlp_layers,
             non_linearity=non_linearity,
             batch_norm=batch_norm,
-            flatten_for_batch_norm=True
+            flatten_for_batch_norm=True,
+            dropout=0.2
         )
         self.gnn = DenseGINConv(
             nn=mlp,
             eps=0.0,
-            train_eps=False
+            train_eps=False,
         )
 
     def forward(self, x, adj, mask):
@@ -42,7 +43,8 @@ class GraphEncoder(torch.nn.Module):
             output_dim=emb_dim,
             num_layers=3,
             non_linearity="lrelu",
-            batch_norm=batch_norm
+            batch_norm=batch_norm,
+            dropout=0.2
         )
 
         if non_linearity == "relu":

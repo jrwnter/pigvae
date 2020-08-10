@@ -62,11 +62,12 @@ class Descriminator(torch.nn.Module):
         self.fnn = FNN(
             #input_dim=hparams["graph_encoder_num_layers"] * hparams["node_dim"],
             input_dim=hparams["emb_dim"],
-            hidden_dim=256,
+            hidden_dim=512,
             output_dim=1,
             num_layers=3,
             non_linearity="lrelu",
             batch_norm=False,
+            dropout=0.2
         )
 
     def forward(self, node, adj, mask=None):

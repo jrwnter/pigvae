@@ -44,9 +44,9 @@ class Trainer(object):
 
         self.model = GraphVAEGAN(hparams).to(self.device)
 
-        self.opt_g = torch.optim.Adam(self.model.generator.parameters(), lr=0.00005, betas=(0.5, 0.99))
-        self.opt_d = torch.optim.Adam(self.model.discriminator.parameters(), lr=0.00005, betas=(0.5, 0.99))
-        self.opt_e = torch.optim.Adam(self.model.encoder.parameters(), lr=0.00005, betas=(0.5, 0.99))
+        self.opt_g = torch.optim.Adam(self.model.generator.parameters(), lr=0.0001, betas=(0.5, 0.99))
+        self.opt_d = torch.optim.Adam(self.model.discriminator.parameters(), lr=0.0001, betas=(0.5, 0.99))
+        self.opt_e = torch.optim.Adam(list(self.model.encoder.parameters()) + list(self.model.generator.parameters()), lr=0.0001, betas=(0.5, 0.99))
         self.global_step = 0
         self.num_epochs = 10000
 
@@ -73,6 +73,8 @@ class Trainer(object):
 
     def train_step(self, batch, train_gen):
         nodes, adj, mask = batch[0].to(self.device), batch[1].to(self.device), batch[2].to(self.device)
+        adj_ = torch.FloatTensor(adj.shape.numel(), 2).to(self.device).zero_().scatter_(1, adj.view(-1, 1).long(), 1).view(list(adj.shape) + [2])
+
         z_pri = torch.randn([adj.shape[0], self.hparams["emb_dim"]]).to(self.device)
 
         # Disciminator
@@ -83,30 +85,33 @@ class Trainer(object):
             mu, log_var = z_enc[:, :self.hparams["emb_dim"]], z_enc[:, self.hparams["emb_dim"]:]
             z_enc = reparameterize(mu, log_var)
 
-            nodes_fake_enc, adj_fake_enc = self.model.generator(z_enc)
-            nodes_fake_enc, adj_fake_enc = postprocess(nodes_fake_enc, "hard_gumbel"), postprocess(adj_fake_enc, "hard_gumbel")
+            nodes_fake_enc_, adj_fake_enc_ = self.model.generator(z_enc)
+            nodes_fake_enc, adj_fake_enc = postprocess(nodes_fake_enc_, "hard_gumbel"), postprocess(adj_fake_enc_, "hard_gumbel")
             adj_fake_enc = adj_fake_enc[:, :, :, 1]
-            mask_fake_enc = nodes_fake_enc[:, :, -1] == 0
-            nodes_fake_enc = nodes_fake_enc[:, :, :-1]
 
-            nodes_fake_pri, adj_fake_pri = self.model.generator(z_pri)
-            nodes_fake_pri, adj_fake_pri = postprocess(nodes_fake_pri, "hard_gumbel"), postprocess(adj_fake_pri, "hard_gumbel")
+            nodes_fake_pri_, adj_fake_pri_ = self.model.generator(z_pri)
+            nodes_fake_pri, adj_fake_pri = postprocess(nodes_fake_pri_, "hard_gumbel"), postprocess(adj_fake_pri_, "hard_gumbel")
             adj_fake_pri = adj_fake_pri[:, :, :, 1]
-            mask_fake_pri = nodes_fake_pri[:, :, -1] == 0
-            nodes_fake_pri = nodes_fake_pri[:, :, :-1]
+
 
         d_logits_real, d_features_real = self.model.discriminator(nodes, adj, None)
         d_logits_fake_enc, d_features_fake_enc = self.model.discriminator(nodes_fake_enc, adj_fake_enc, None)
         d_logits_fake_pri, d_features_fake_pri = self.model.discriminator(nodes_fake_pri, adj_fake_pri, None)
 
-        # Compute loss for gradient penalty.
         eps = torch.rand(d_logits_real.size(0), 1, 1).to(self.device)
-        x_int0 = (eps * nodes + (1. - eps) * nodes_fake_enc).requires_grad_(True)
-        x_int1 = (eps * adj + (1. - eps) * adj_fake_enc).requires_grad_(True)
-        x_int2 = (eps * nodes + (1. - eps) * nodes_fake_pri).requires_grad_(True)
-        x_int3 = (eps * adj + (1. - eps) * adj_fake_pri).requires_grad_(True)
+        x_int0 = (eps * nodes + (1. - eps) * nodes_fake_enc_).requires_grad_(True)
+        x_int1 = (eps.unsqueeze(-1) * adj_ + (1. - eps.unsqueeze(-1)) * adj_fake_enc_).requires_grad_(True)
+        x_int2 = (eps * nodes + (1. - eps) * nodes_fake_pri_).requires_grad_(True)
+        x_int3 = (eps.unsqueeze(-1) * adj_ + (1. - eps.unsqueeze(-1)) * adj_fake_pri_).requires_grad_(True)
+
+        x_int0, x_int1 = postprocess(x_int0, "hard_gumbel"), postprocess(x_int1, "hard_gumbel")
+        x_int1 = x_int1[:, :, :, 1]
+        x_int2, x_int3 = postprocess(x_int2, "hard_gumbel"), postprocess(x_int3, "hard_gumbel")
+        x_int3 = x_int3[:, :, :, 1]
         grad_enc, _ = self.model.discriminator(x_int0, x_int1, None)
         grad_pri, _ = self.model.discriminator(x_int2, x_int3, None)
+
+
         d_loss_gp = self.gradient_penalty(grad_enc, x_int0) + self.gradient_penalty(grad_enc, x_int1) + self.gradient_penalty(grad_pri, x_int2) + self.gradient_penalty(grad_pri, x_int3)
 
         d_loss = -torch.mean(d_logits_real) + 0.5 * torch.mean(d_logits_fake_enc) + 0.5 * torch.mean(d_logits_fake_pri) + 10 * d_loss_gp
@@ -125,8 +130,6 @@ class Trainer(object):
         nodes_fake_enc, adj_fake_enc = postprocess(nodes_fake_enc, "hard_gumbel"), postprocess(adj_fake_enc,
                                                                                                "hard_gumbel")
         adj_fake_enc = adj_fake_enc[:, :, :, 1]
-        mask_fake_enc = nodes_fake_enc[:, :, -1] == 0
-        nodes_fake_enc = nodes_fake_enc[:, :, :-1]
 
         d_logits_real, d_features_real = self.model.discriminator(nodes, adj, None)
         d_logits_fake_enc, d_features_fake_enc = self.model.discriminator(nodes_fake_enc, adj_fake_enc, None)
@@ -152,15 +155,11 @@ class Trainer(object):
             nodes_fake_enc_d, adj_fake_enc_d = postprocess(nodes_fake_enc_d, "hard_gumbel"), postprocess(adj_fake_enc_d,
                                                                                                    "hard_gumbel")
             adj_fake_enc_d = adj_fake_enc_d[:, :, :, 1]
-            mask_fake_enc_d = nodes_fake_enc_d[:, :, -1] == 0
-            nodes_fake_enc_d = nodes_fake_enc_d[:, :, :-1]
 
             nodes_fake_pri, adj_fake_pri = self.model.generator(z_pri)
             nodes_fake_pri, adj_fake_pri = postprocess(nodes_fake_pri, "hard_gumbel"), postprocess(adj_fake_pri,
                                                                                                    "hard_gumbel")
             adj_fake_pri = adj_fake_pri[:, :, :, 1]
-            mask_fake_pri = nodes_fake_pri[:, :, -1] == 0
-            nodes_fake_pri = nodes_fake_pri[:, :, :-1]
 
 
             d_logits_fake_enc_d, d_features_fake_enc_d = self.model.discriminator(nodes_fake_enc_d, adj_fake_enc_d, None)

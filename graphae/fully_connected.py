@@ -4,7 +4,7 @@ from torch.nn import Linear, Sequential, ELU, BatchNorm1d, ReLU
 
 class FNN(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, num_layers, non_linearity="relu", batch_norm=False,
-                 flatten_for_batch_norm=False):
+                 flatten_for_batch_norm=False, dropout=None):
         super().__init__()
         self.num_layers = num_layers
         self.batch_norm = batch_norm
@@ -14,8 +14,8 @@ class FNN(torch.nn.Module):
         layers += [Linear(hidden_dim, output_dim)]
         self.layers = torch.nn.ModuleList(layers)
         if batch_norm:
-            bn_layers = [BatchNorm1d(input_dim)]
-            bn_layers += [BatchNorm1d(hidden_dim) for _ in range(num_layers - 1)]
+            #bn_layers = [BatchNorm1d(input_dim)]
+            bn_layers = [BatchNorm1d(hidden_dim) for _ in range(num_layers)]
             self.bn_layers = torch.nn.ModuleList(bn_layers)
         if non_linearity == "relu":
             self.non_linearity = torch.nn.ReLU()
@@ -23,18 +23,22 @@ class FNN(torch.nn.Module):
             self.non_linearity = torch.nn.ELU()
         elif non_linearity == "lrelu":
             self.non_linearity = torch.nn.LeakyReLU()
+        self.dropout = dropout
+
 
     def forward(self, x):
         for i in range(self.num_layers):
             if i > 0:
                 x = self.non_linearity(x)
-            if self.batch_norm:
-                if self.flatten_for_batch_norm:
-                    shape = x.shape
-                    x = x.view(shape[0] * shape[1], shape[2])
-                    x = self.bn_layers[i](x)
-                    x = x.view(shape[0], shape[1], shape[2])
-                else:
-                    x = self.bn_layers[i](x)
+                if self.batch_norm:
+                    if self.flatten_for_batch_norm:
+                        shape = x.shape
+                        x = x.view(shape[0] * shape[1], shape[2])
+                        x = self.bn_layers[i](x)
+                        x = x.view(shape[0], shape[1], shape[2])
+                    else:
+                        x = self.bn_layers[i](x)
+                if self.dropout is not None:
+                    x = torch.nn.functional.dropout(x, p=self.dropout)
             x = self.layers[i](x)
         return x
