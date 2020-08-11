@@ -62,9 +62,19 @@ class Descriminator(torch.nn.Module):
         super().__init__()
         self.encoder = Encoder(hparams)
         self.linear = torch.nn.Linear(hparams["emb_dim"], hparams["emb_dim"] )
-        self.fnn = FNN(
+        self.fnn1 = FNN(
             #input_dim=hparams["graph_encoder_num_layers"] * hparams["node_dim"],
             input_dim=hparams["emb_dim"],
+            hidden_dim=512,
+            output_dim=128,
+            num_layers=3,
+            non_linearity=hparams["nonlin"],
+            batch_norm=False,
+            dropout=0.2
+        )
+        self.fnn2 = FNN(
+            # input_dim=hparams["graph_encoder_num_layers"] * hparams["node_dim"],
+            input_dim=128,
             hidden_dim=512,
             output_dim=1,
             num_layers=3,
@@ -78,8 +88,9 @@ class Descriminator(torch.nn.Module):
         """sim = torch.abs(c.unsqueeze(0) - c.unsqueeze(1)).sum(dim=-1)
         sim = torch.exp(-sim).sum(-1).unsqueeze(-1)
         x = torch.cat((h, sim), dim=1)"""
-        x = self.fnn(emb).squeeze()
-        return x
+        h = self.fnn1(emb)
+        x = self.fnn2(emb)
+        return x, h
 
 
 class GraphVAEGAN(torch.nn.Module):
@@ -94,8 +105,8 @@ class GraphVAEGAN(torch.nn.Module):
 
     def discriminate(self, node_features, adj, mask=None):
         emb = self.encoder(node_features, adj, mask)
-        out = self.discriminator(emb)
-        return out, emb
+        logit, hidden = self.discriminator(emb)
+        return logit, hidden
 
     def generate(self, z):
         nodes_fake_, adj_fake_ = self.generator(z)

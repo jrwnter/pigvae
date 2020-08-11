@@ -58,7 +58,7 @@ class Trainer(object):
             print("Epoch: ", epoch)
             for batch in self.train_dataloader:
                 self.global_step += 1
-                if self.global_step % 5 == 0:
+                if self.global_step % 10 == 0:
                     d_loss, g_loss, e_loss_kld, g_loss_rec = self.train_step(batch, train_gen=True)
                     log["g_loss"].append(g_loss.item())
                     log["g_loss_rec"].append(g_loss_rec.item())
