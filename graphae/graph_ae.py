@@ -64,7 +64,7 @@ class Descriminator(torch.nn.Module):
         self.linear = torch.nn.Linear(hparams["emb_dim"], hparams["emb_dim"] )
         self.fnn = FNN(
             #input_dim=hparams["graph_encoder_num_layers"] * hparams["node_dim"],
-            input_dim=hparams["emb_dim"] + 1,
+            input_dim=hparams["emb_dim"],
             hidden_dim=512,
             output_dim=1,
             num_layers=3,
@@ -73,38 +73,77 @@ class Descriminator(torch.nn.Module):
             dropout=0.2
         )
 
-    def forward(self, node, adj, mask=None):
-        h = self.encoder(node, adj, mask)
-        c = self.linear(h)
-        sim = torch.abs(c.unsqueeze(0) - c.unsqueeze(1)).sum(dim=-1)
+    def forward(self, emb):
+        #c = self.linear(emb)
+        """sim = torch.abs(c.unsqueeze(0) - c.unsqueeze(1)).sum(dim=-1)
         sim = torch.exp(-sim).sum(-1).unsqueeze(-1)
-        x = torch.cat((h, sim), dim=1)
-        x = self.fnn(x).squeeze()
-        return x, h
+        x = torch.cat((h, sim), dim=1)"""
+        x = self.fnn(emb).squeeze()
+        return x
 
 
 class GraphVAEGAN(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
         self.hparams = hparams
+        self.encoder = Encoder(hparams)
         self.generator = Decoder(hparams)
         self.discriminator = Descriminator(hparams)
-        hparams2 = hparams.copy()
-        hparams2["emb_dim"] *= 2
-        self.encoder = Encoder(hparams2)
+        self.linear_mu = torch.nn.Linear(hparams["emb_dim"], hparams["emb_dim"])
+        self.linear_logvar = torch.nn.Linear(hparams["emb_dim"], hparams["emb_dim"])
+
+    def discriminate(self, node_features, adj, mask=None):
+        emb = self.encoder(node_features, adj, mask)
+        out = self.discriminator(emb)
+        return out, emb
+
+    def generate(self, z):
+        nodes_fake_, adj_fake_ = self.generator(z)
+        nodes_fake = postprocess(
+            logits=nodes_fake_,
+            method="hard_gumbel")
+        adj_fake = postprocess(
+            logits=adj_fake_,
+            method="hard_gumbel")
+        adj_fake = adj_fake[:, :, :, 1]
+        return nodes_fake, adj_fake, nodes_fake_, adj_fake_
+
+    def encode(self, node_features, adj, mask=None):
+        emb = self.encoder(node_features, adj, mask)
+        mu = self.linear_mu(emb)
+        logvar = self.linear_logvar(emb)
+        z = reparameterize(mu, logvar)
+        return z, mu, logvar
 
     def forward(self, node_features, adj, mask=None):
-        mol_emb = self.encoder(node_features, adj, mask)
-        mu, log_var = mol_emb[:, :128], mol_emb[:, 128:]
-        mol_emb = reparameterize(mu, log_var)
-        node_features_, adj_ = self.generator(mol_emb)
+        z, _, _ = self.encode(node_features, adj, mask)
+        node_features_, adj_, _, _ = self.generate(z)
 
-        return node_features_, adj_, mol_emb
+        return node_features_, adj_, z
 
 
 def reparameterize(mu, logvar):
     std = torch.exp(0.5 * logvar)
     eps = torch.randn_like(std)
     return mu + eps * std
+
+
+def postprocess(logits, method, temperature=1.):
+    shape = logits.shape
+    if method == 'soft_gumbel':
+        out = torch.nn.functional.gumbel_softmax(
+            logits=logits.view(-1, shape[-1]) / temperature,
+            hard=False
+        )
+    elif method == 'hard_gumbel':
+        out = torch.nn.functional.gumbel_softmax(
+            logits=logits.view(-1, shape[-1]) / temperature,
+            hard=True
+        )
+    else:
+        out = torch.nn.functional.softmax(
+            input=logits / temperature
+        )
+    return out.view(shape)
 
 
