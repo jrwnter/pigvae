@@ -12,8 +12,8 @@ class Encoder(torch.nn.Module):
             node_dim=hparams["node_dim"],
             emb_dim=hparams["emb_dim"],
             num_layers=hparams["graph_encoder_num_layers"],
-            batch_norm=False,
-            non_linearity="lrelu"
+            batch_norm=hparams["batch_norm"],
+            non_linearity=hparams["nonlin"]
         )
 
     def forward(self, node_features, adj, mask=None):
@@ -29,7 +29,7 @@ class Decoder(torch.nn.Module):
             hidden_dim=hparams["meta_node_decoder_hidden_dim"],
             output_dim=hparams["meta_node_decoder_hidden_dim"],
             num_layers=hparams["meta_node_decoder_num_layers"],
-            non_linearity="relu",
+            non_linearity=hparams["nonlin"],
             batch_norm=hparams["batch_norm"],
         )
         self.edge_predictor = decoder.EdgePredictor(
@@ -38,6 +38,7 @@ class Decoder(torch.nn.Module):
             hidden_dim=hparams["edge_predictor_hidden_dim"],
             num_layers=hparams["edge_predictor_num_layers"],
             batch_norm=hparams["batch_norm"],
+            non_lin=hparams["nonlin"]
         )
         self.node_predictor = decoder.NodePredictor(
             num_nodes=hparams["max_num_nodes"],
@@ -45,7 +46,8 @@ class Decoder(torch.nn.Module):
             hidden_dim=hparams["node_decoder_hidden_dim"],
             num_layers=hparams["node_decoder_num_layers"],
             batch_norm=hparams["batch_norm"],
-            num_node_features=hparams["num_atom_features"]
+            num_node_features=hparams["num_atom_features"],
+            non_lin=hparams["nonlin"]
         )
 
     def forward(self, z):
@@ -66,7 +68,7 @@ class Descriminator(torch.nn.Module):
             hidden_dim=512,
             output_dim=1,
             num_layers=3,
-            non_linearity="lrelu",
+            non_linearity=hparams["nonlin"],
             batch_norm=False,
             dropout=0.2
         )

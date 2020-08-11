@@ -38,6 +38,8 @@ def add_arguments(parser):
     parser.add_argument("--batch_norm", dest='batch_norm', action='store_true')
     parser.set_defaults(batch_norm=False)
 
+    parser.add_argument("--nonlin", default="lrelu", type=str)
+
     # ENCODER
     parser.add_argument("--emb_dim", default=128, type=int)
     parser.add_argument("--node_dim", default=128, type=int)
