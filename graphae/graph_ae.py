@@ -59,9 +59,10 @@ class Descriminator(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
         self.encoder = Encoder(hparams)
+        self.linear = torch.nn.Linear(hparams["emb_dim"], hparams["emb_dim"] )
         self.fnn = FNN(
             #input_dim=hparams["graph_encoder_num_layers"] * hparams["node_dim"],
-            input_dim=hparams["emb_dim"],
+            input_dim=hparams["emb_dim"] + 1,
             hidden_dim=512,
             output_dim=1,
             num_layers=3,
@@ -72,7 +73,11 @@ class Descriminator(torch.nn.Module):
 
     def forward(self, node, adj, mask=None):
         h = self.encoder(node, adj, mask)
-        x = self.fnn(h).squeeze()
+        c = self.linear(h)
+        sim = torch.abs(c.unsqueeze(0) - c.unsqueeze(1)).sum(dim=-1)
+        sim = torch.exp(-sim).sum(-1).unsqueeze(-1)
+        x = torch.cat((h, sim), dim=1)
+        x = self.fnn(x).squeeze()
         return x, h
 
 
