@@ -61,7 +61,7 @@ class Descriminator(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
         self.encoder = Encoder(hparams)
-        self.linear = torch.nn.Linear(hparams["emb_dim"], hparams["emb_dim"] )
+        self.linear = torch.nn.Linear(hparams["emb_dim"], hparams["emb_dim"])
         self.fnn = FNN(
             #input_dim=hparams["graph_encoder_num_layers"] * hparams["node_dim"],
             input_dim=hparams["emb_dim"],
@@ -73,31 +73,33 @@ class Descriminator(torch.nn.Module):
             dropout=0.2
         )
 
-    def forward(self, emb):
-        #c = self.linear(emb)
-        """sim = torch.abs(c.unsqueeze(0) - c.unsqueeze(1)).sum(dim=-1)
-        sim = torch.exp(-sim).sum(-1).unsqueeze(-1)
-        x = torch.cat((h, sim), dim=1)"""
+    def forward(self, node_features, adj, mask=None):
+        emb = self.encoder(node_features, adj, mask)
         x = self.fnn(emb)
-        return x
+        return x, emb
 
 
-class GraphVAEGAN(torch.nn.Module):
+class VAEEncoder(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
-        self.hparams = hparams
         self.encoder = Encoder(hparams)
-        self.generator = Decoder(hparams)
-        self.discriminator = Descriminator(hparams)
         self.linear_mu = torch.nn.Linear(hparams["emb_dim"], hparams["emb_dim"])
         self.linear_logvar = torch.nn.Linear(hparams["emb_dim"], hparams["emb_dim"])
 
-    def discriminate(self, node_features, adj, mask=None):
+    def forward(self, node_features, adj, mask=None):
         emb = self.encoder(node_features, adj, mask)
-        logit = self.discriminator(emb)
-        return logit, emb
+        mu = self.linear_mu(emb)
+        logvar = self.linear_logvar(emb)
+        z = reparameterize(mu, logvar)
+        return z, mu, logvar
 
-    def generate(self, z):
+
+class VAEDecoder(torch.nn.Module):
+    def __init__(self, hparams):
+        super().__init__()
+        self.generator = Decoder(hparams)
+
+    def forward(self, z):
         nodes_fake_, adj_fake_ = self.generator(z)
         nodes_fake = postprocess(
             logits=nodes_fake_,
@@ -108,16 +110,18 @@ class GraphVAEGAN(torch.nn.Module):
         adj_fake = adj_fake[:, :, :, 1]
         return nodes_fake, adj_fake, nodes_fake_, adj_fake_
 
-    def encode(self, node_features, adj, mask=None):
-        emb = self.encoder(node_features, adj, mask)
-        mu = self.linear_mu(emb)
-        logvar = self.linear_logvar(emb)
-        z = reparameterize(mu, logvar)
-        return z, mu, logvar
+
+class GraphVAEGAN(torch.nn.Module):
+    def __init__(self, hparams):
+        super().__init__()
+        self.hparams = hparams
+        self.encoder = VAEEncoder(hparams)
+        self.generator = VAEDecoder(hparams)
+        self.discriminator = Descriminator(hparams)
 
     def forward(self, node_features, adj, mask=None):
-        z, _, _ = self.encode(node_features, adj, mask)
-        node_features_, adj_, _, _ = self.generate(z)
+        z, _, _ = self.encoder(node_features, adj, mask)
+        node_features_, adj_, _, _ = self.generator(z)
 
         return node_features_, adj_, z
 

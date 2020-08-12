@@ -44,9 +44,9 @@ class Trainer(object):
 
         self.model = GraphVAEGAN(hparams).to(self.device)
 
-        self.opt_g = torch.optim.Adam(list(self.model.generator.parameters()), lr=0.00002, betas=(0.5, 0.99))
-        self.opt_d = torch.optim.Adam(list(self.model.discriminator.parameters()) + list(self.model.encoder.parameters()), lr=0.00002, betas=(0.5, 0.99))
-        self.opt_e = torch.optim.Adam(list(self.model.encoder.parameters()) + list(self.model.linear_mu.parameters()) + list(self.model.linear_logvar.parameters()), lr=0.00002, betas=(0.5, 0.99))
+        self.opt_g = torch.optim.Adam(list(self.model.generator.parameters()) + list(self.model.encoder.parameters()), lr=0.00002, betas=(0.5, 0.99))
+        self.opt_d = torch.optim.Adam(self.model.discriminator.parameters(), lr=0.00002, betas=(0.5, 0.99))
+        self.opt_e = torch.optim.Adam(self.model.encoder.parameters(), lr=0.00002, betas=(0.5, 0.99))
         self.global_step = 0
         self.num_epochs = 10000
 
@@ -58,7 +58,7 @@ class Trainer(object):
             print("Epoch: ", epoch)
             for batch in self.train_dataloader:
                 self.global_step += 1
-                if self.global_step % 5 == 0:
+                if self.global_step % 4 == 0:
                     d_loss, g_loss, e_loss_kld, e_loss_rec, g_loss_rec = self.train_step(batch, train_gen=True)
                     log["g_loss"].append(g_loss.item())
                     log["g_loss_rec"].append(g_loss_rec.item())
@@ -83,13 +83,13 @@ class Trainer(object):
 
         self.opt_d.zero_grad()
         with torch.no_grad():
-            z_enc, _, _ = self.model.encode(nodes, adj)
-            nodes_fake_enc, adj_fake_enc, nodes_fake_enc_, adj_fake_enc_ = self.model.generate(z_enc)
-            nodes_fake_pri, adj_fake_pri, nodes_fake_pri_, adj_fake_pri_ = self.model.generate(z_pri)
+            z_enc, _, _ = self.model.encoder(nodes, adj)
+            nodes_fake_enc, adj_fake_enc, nodes_fake_enc_, adj_fake_enc_ = self.model.generator(z_enc)
+            nodes_fake_pri, adj_fake_pri, nodes_fake_pri_, adj_fake_pri_ = self.model.generator(z_pri)
 
-        d_logits_real, d_features_real = self.model.discriminate(nodes, adj)
-        d_logits_fake_enc, d_features_fake_enc = self.model.discriminate(nodes_fake_enc, adj_fake_enc)
-        d_logits_fake_pri, d_features_fake_pri = self.model.discriminate(nodes_fake_pri, adj_fake_pri)
+        d_logits_real, d_features_real = self.model.discriminator(nodes, adj)
+        d_logits_fake_enc, d_features_fake_enc = self.model.discriminator(nodes_fake_enc, adj_fake_enc)
+        d_logits_fake_pri, d_features_fake_pri = self.model.discriminator(nodes_fake_pri, adj_fake_pri)
 
         eps = torch.rand(d_logits_real.size(0), 1, 1).to(self.device)
         x_enc1 = (eps * nodes + (1. - eps) * nodes_fake_enc_).requires_grad_(True)
@@ -99,8 +99,8 @@ class Trainer(object):
 
         x_enc1, x_enc2 = postprocess(x_enc1, "hard_gumbel"), postprocess(x_enc2, "hard_gumbel")[:, :, :, 1]
         x_pri1, x_pri2 = postprocess(x_pri1, "hard_gumbel"), postprocess(x_pri2, "hard_gumbel")[:, :, :, 1]
-        grad_enc, _ = self.model.discriminate(x_enc1, x_enc2)
-        grad_pri, _ = self.model.discriminate(x_pri1, x_pri2)
+        grad_enc, _ = self.model.discriminator(x_enc1, x_enc2)
+        grad_pri, _ = self.model.discriminator(x_pri1, x_pri2)
 
         d_loss_gp = self.gradient_penalty(grad_pri, x_pri1) + self.gradient_penalty(grad_pri, x_pri2) + self.gradient_penalty(grad_enc, x_enc1) + self.gradient_penalty(grad_enc, x_enc2)
 
@@ -111,24 +111,20 @@ class Trainer(object):
         # Encoder
 
         self.opt_e.zero_grad()
-        z_enc, mu, log_var = self.model.encode(nodes, adj)
+        z_enc, mu, log_var = self.model.encoder(nodes, adj)
 
-        nodes_fake_enc, adj_fake_enc, nodes_fake_enc_, adj_fake_enc_ = self.model.generate(z_enc)
-        _, d_features_real = self.model.discriminate(nodes, adj)
-        _, d_features_fake_enc = self.model.discriminate(nodes_fake_enc, adj_fake_enc)
+        nodes_fake_enc, adj_fake_enc, nodes_fake_enc_, adj_fake_enc_ = self.model.generator(z_enc)
+        _, d_features_real = self.model.discriminator(nodes, adj)
+        _, d_features_fake_enc = self.model.discriminator(nodes_fake_enc, adj_fake_enc)
 
-        e_loss_feature_norm = ((torch.norm(d_features_real, dim=-1) - 1) ** 2).mean()
-
-        batch_size = d_features_real.size(0)
-        mean_p_dist_real = torch.triu((d_features_real.unsqueeze(0) - d_features_real.unsqueeze(1)).norm(dim=-1))
-        mean_p_dist_fake = torch.triu((d_features_fake_enc.unsqueeze(0) - d_features_fake_enc.unsqueeze(1)).norm(dim=-1))
-        norm_factor = 0.5 * ((mean_p_dist_real ** 2).sum() + (mean_p_dist_fake ** 2).sum()) / (
-                    (batch_size * (batch_size - 1)) / 2)
-        e_loss_rec = ((d_features_fake_enc - d_features_real).norm(dim=-1) ** 2).mean() / norm_factor
+        dist = torch.norm(d_features_real.unsqueeze(0) - d_features_fake_enc.unsqueeze(1), dim=-1)
+        dist_diag = dist.diag()
+        dist_off_diag = (dist.triu(1) + dist.tril(-1)).mean(dim=0)
+        e_loss_rec = (dist_diag ** 2).mean() / (dist_off_diag ** 2).mean()
 
         e_loss_kld = kld_loss(mu, log_var)
 
-        e_loss = 0.0001 * e_loss_kld + e_loss_rec + e_loss_feature_norm
+        e_loss = 0.0001 * e_loss_kld + e_loss_rec
 
         e_loss.backward()
         self.opt_e.step()
@@ -137,22 +133,23 @@ class Trainer(object):
         self.opt_g.zero_grad()
 
         if train_gen:
-            z_enc, _, _ = self.model.encode(nodes, adj)
+            z_enc, _, _ = self.model.encoder(nodes, adj)
 
-            nodes_fake_enc, adj_fake_enc, nodes_fake_enc_, adj_fake_enc_ = self.model.generate(z_enc)
-            nodes_fake_pri, adj_fake_pri, nodes_fake_pri_, adj_fake_pri_ = self.model.generate(z_pri)
+            nodes_fake_enc, adj_fake_enc, nodes_fake_enc_, adj_fake_enc_ = self.model.generator(z_enc)
+            nodes_fake_enc_d, adj_fake_enc_d, _, _ = self.model.generator(z_enc.detach())
+            nodes_fake_pri, adj_fake_pri, nodes_fake_pri_, adj_fake_pri_ = self.model.generator(z_pri)
 
-            _, d_features_real = self.model.discriminate(nodes, adj)
-            d_logits_fake_enc, d_features_fake_enc = self.model.discriminate(nodes_fake_enc, adj_fake_enc)
-            d_logits_fake_pri, _ = self.model.discriminate(nodes_fake_pri, adj_fake_pri)
+            _, d_features_real = self.model.discriminator(nodes, adj)
+            d_logits_fake_enc, d_features_fake_enc = self.model.discriminator(nodes_fake_enc, adj_fake_enc)
+            d_logits_fake_enc_d, d_features_fake_enc_d = self.model.discriminator(nodes_fake_enc_d, adj_fake_enc_d)
+            d_logits_fake_pri, _ = self.model.discriminator(nodes_fake_pri, adj_fake_pri)
 
-            g_loss_gen = -0.5 * (torch.mean(d_logits_fake_enc) + torch.mean(d_logits_fake_pri))
-            batch_size = d_features_real.size(0)
-            mean_p_dist_real = torch.triu((d_features_real.unsqueeze(0) - d_features_real.unsqueeze(1)).norm(dim=-1))
-            mean_p_dist_fake = torch.triu((d_features_fake_enc.unsqueeze(0) - d_features_fake_enc.unsqueeze(1)).norm(dim=-1))
-            norm_factor = 0.5 * ((mean_p_dist_real ** 2).sum() + (mean_p_dist_fake ** 2).sum()) / ((batch_size * (batch_size - 1)) / 2)
-            g_loss_rec = ((d_features_fake_enc - d_features_real).norm(dim=-1) ** 2).mean() / norm_factor
-            g_loss = g_loss_gen + g_loss_rec
+            g_loss_gen = -0.5 * (torch.mean(d_logits_fake_enc_d) + torch.mean(d_logits_fake_pri))
+            dist = torch.norm(d_features_real.unsqueeze(0) - d_features_fake_enc.unsqueeze(1), dim=-1)
+            dist_diag = dist.diag()
+            dist_off_diag = (dist.triu(1) + dist.tril(-1)).mean(dim=0)
+            g_loss_rec = (dist_diag ** 2).mean() / (dist_off_diag ** 2).mean()
+            g_loss = g_loss_gen + 0.00001 * g_loss_rec
 
             g_loss.backward()
             self.opt_g.step()
