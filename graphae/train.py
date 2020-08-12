@@ -44,7 +44,7 @@ class Trainer(object):
 
         self.model = GraphVAEGAN(hparams).to(self.device)
 
-        self.opt_g = torch.optim.Adam(list(self.model.generator.parameters()) + list(self.model.encoder.parameters()) + list(self.model.linear_mu.parameters()) + list(self.model.linear_logvar.parameters()), lr=0.00002, betas=(0.5, 0.99))
+        self.opt_g = torch.optim.Adam(list(self.model.generator.parameters()), lr=0.00002, betas=(0.5, 0.99))
         self.opt_d = torch.optim.Adam(list(self.model.discriminator.parameters()) + list(self.model.encoder.parameters()), lr=0.00002, betas=(0.5, 0.99))
         self.opt_e = torch.optim.Adam(list(self.model.encoder.parameters()) + list(self.model.linear_mu.parameters()) + list(self.model.linear_logvar.parameters()), lr=0.00002, betas=(0.5, 0.99))
         self.global_step = 0
@@ -53,23 +53,24 @@ class Trainer(object):
         self.criterion = torch.nn.BCELoss()
 
     def train(self):
-        log = {"g_loss": [], "d_loss": [], "e_loss_kld": [], "g_loss_rec": []}
+        log = {"g_loss": [], "d_loss": [], "e_loss_kld": [], "e_loss_rec": [], "g_loss_rec": []}
         for epoch in range(self.num_epochs):
             print("Epoch: ", epoch)
             for batch in self.train_dataloader:
                 self.global_step += 1
-                if self.global_step % 10 == 0:
-                    d_loss, g_loss, e_loss_kld, g_loss_rec = self.train_step(batch, train_gen=True)
+                if self.global_step % 5 == 0:
+                    d_loss, g_loss, e_loss_kld, e_loss_rec, g_loss_rec = self.train_step(batch, train_gen=True)
                     log["g_loss"].append(g_loss.item())
                     log["g_loss_rec"].append(g_loss_rec.item())
                 else:
-                    d_loss, e_loss_kld = self.train_step(batch, train_gen=False)
+                    d_loss, e_loss_kld, e_loss_rec = self.train_step(batch, train_gen=False)
                 log["d_loss"].append(d_loss.item())
                 log["e_loss_kld"].append(e_loss_kld.item())
+                log["e_loss_rec"].append(e_loss_rec.item())
                 if self.global_step % 100 == 0:
                     self.evaluate(train_log=log)
                     torch.save(self.model, self.save_file)
-                    log = {"g_loss": [], "d_loss": [], "e_loss_kld": [], "g_loss_rec": []}
+                    log = {"g_loss": [], "d_loss": [], "e_loss_kld": [], "e_loss_rec": [], "g_loss_rec": []}
 
 
     def train_step(self, batch, train_gen):
@@ -86,9 +87,9 @@ class Trainer(object):
             nodes_fake_enc, adj_fake_enc, nodes_fake_enc_, adj_fake_enc_ = self.model.generate(z_enc)
             nodes_fake_pri, adj_fake_pri, nodes_fake_pri_, adj_fake_pri_ = self.model.generate(z_pri)
 
-        d_logits_real, _ = self.model.discriminate(nodes, adj)
-        d_logits_fake_enc, _ = self.model.discriminate(nodes_fake_enc, adj_fake_enc)
-        d_logits_fake_pri, _ = self.model.discriminate(nodes_fake_pri, adj_fake_pri)
+        d_logits_real, d_features_real = self.model.discriminate(nodes, adj)
+        d_logits_fake_enc, d_features_fake_enc = self.model.discriminate(nodes_fake_enc, adj_fake_enc)
+        d_logits_fake_pri, d_features_fake_pri = self.model.discriminate(nodes_fake_pri, adj_fake_pri)
 
         eps = torch.rand(d_logits_real.size(0), 1, 1).to(self.device)
         x_enc1 = (eps * nodes + (1. - eps) * nodes_fake_enc_).requires_grad_(True)
@@ -112,9 +113,22 @@ class Trainer(object):
         self.opt_e.zero_grad()
         z_enc, mu, log_var = self.model.encode(nodes, adj)
 
+        nodes_fake_enc, adj_fake_enc, nodes_fake_enc_, adj_fake_enc_ = self.model.generate(z_enc)
+        _, d_features_real = self.model.discriminate(nodes, adj)
+        _, d_features_fake_enc = self.model.discriminate(nodes_fake_enc, adj_fake_enc)
+
+        e_loss_feature_norm = ((torch.norm(d_features_real, dim=-1) - 1) ** 2).mean()
+
+        batch_size = d_features_real.size(0)
+        mean_p_dist_real = torch.triu((d_features_real.unsqueeze(0) - d_features_real.unsqueeze(1)).norm(dim=-1))
+        mean_p_dist_fake = torch.triu((d_features_fake_enc.unsqueeze(0) - d_features_fake_enc.unsqueeze(1)).norm(dim=-1))
+        norm_factor = 0.5 * ((mean_p_dist_real ** 2).sum() + (mean_p_dist_fake ** 2).sum()) / (
+                    (batch_size * (batch_size - 1)) / 2)
+        e_loss_rec = ((d_features_fake_enc - d_features_real).norm(dim=-1) ** 2).mean() / norm_factor
+
         e_loss_kld = kld_loss(mu, log_var)
 
-        e_loss = 0.1 * e_loss_kld
+        e_loss = 0.0001 * e_loss_kld + e_loss_rec + e_loss_feature_norm
 
         e_loss.backward()
         self.opt_e.step()
@@ -126,26 +140,24 @@ class Trainer(object):
             z_enc, _, _ = self.model.encode(nodes, adj)
 
             nodes_fake_enc, adj_fake_enc, nodes_fake_enc_, adj_fake_enc_ = self.model.generate(z_enc)
-            nodes_fake_enc_d, adj_fake_enc_d, nodes_fake_enc_d_, adj_fake_enc_d_ = self.model.generate(z_enc.detach())
             nodes_fake_pri, adj_fake_pri, nodes_fake_pri_, adj_fake_pri_ = self.model.generate(z_pri)
 
             _, d_features_real = self.model.discriminate(nodes, adj)
-            _, d_features_fake_enc = self.model.discriminate(nodes_fake_enc, adj_fake_enc)
-            d_logits_fake_enc_d, _ = self.model.discriminate(nodes_fake_enc_d, adj_fake_enc_d)
+            d_logits_fake_enc, d_features_fake_enc = self.model.discriminate(nodes_fake_enc, adj_fake_enc)
             d_logits_fake_pri, _ = self.model.discriminate(nodes_fake_pri, adj_fake_pri)
 
-            g_loss_gen = -0.5 * (torch.mean(d_logits_fake_enc_d) + torch.mean(d_logits_fake_pri))
+            g_loss_gen = -0.5 * (torch.mean(d_logits_fake_enc) + torch.mean(d_logits_fake_pri))
             batch_size = d_features_real.size(0)
-            norm_factor = torch.triu(
-                ((d_features_real.unsqueeze(0) - d_features_real.unsqueeze(1)) ** 2).mean(dim=-1)).sum() / (
-                                      (batch_size * batch_size - 1) / 2)
-            g_loss_rec = mse_loss(d_features_fake_enc, d_features_real) / norm_factor
+            mean_p_dist_real = torch.triu((d_features_real.unsqueeze(0) - d_features_real.unsqueeze(1)).norm(dim=-1))
+            mean_p_dist_fake = torch.triu((d_features_fake_enc.unsqueeze(0) - d_features_fake_enc.unsqueeze(1)).norm(dim=-1))
+            norm_factor = 0.5 * ((mean_p_dist_real ** 2).sum() + (mean_p_dist_fake ** 2).sum()) / ((batch_size * (batch_size - 1)) / 2)
+            g_loss_rec = ((d_features_fake_enc - d_features_real).norm(dim=-1) ** 2).mean() / norm_factor
             g_loss = g_loss_gen + g_loss_rec
 
             g_loss.backward()
             self.opt_g.step()
-            return d_loss, g_loss, e_loss_kld, g_loss_rec
-        return d_loss, e_loss_kld
+            return d_loss, g_loss, e_loss_kld, e_loss_rec, g_loss_rec
+        return d_loss, e_loss_kld, e_loss_rec
 
     def evaluate(self, train_log):
         """with torch.no_grad():
