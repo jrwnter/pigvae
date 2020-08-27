@@ -21,9 +21,6 @@ class Trainer(object):
             os.mkdir(save_dir)
         self.save_file = os.path.join(save_dir, "save.ckpt")
         graphs = np.load("1000000_16mnn_graphs.npy")
-        #toy_example = np.stack(10000 * [graphs[0]])
-        #train_dataset = MolecularGraphDataset(graphs=toy_example[128:], noise=False)
-        #eval_dataset = MolecularGraphDataset(graphs=toy_example[:128], noise=False)
         train_dataset = MolecularGraphDataset(graphs=graphs[1024:], noise=False)
         eval_dataset = MolecularGraphDataset(graphs=graphs[:1024], noise=False)
         self.train_dataloader = DataLoader(
