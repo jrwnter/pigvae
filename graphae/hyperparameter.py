@@ -1,6 +1,6 @@
 import os
 DEFAULT_DATA_PATH = "/home/ggwaq/projects/graph_vae/smiles_atom_count2.csv"
-DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves4")
+DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves5")
 
 
 def add_arguments(parser):
@@ -18,7 +18,7 @@ def add_arguments(parser):
     parser.add_argument('-g', '--gpus', default=1, type=int)
     parser.add_argument('-e', '--num_epochs', default=50, type=int)
     parser.add_argument("--num_eval_samples", default=1024, type=int)
-    parser.add_argument("--eval_freq", default=200, type=int)
+    parser.add_argument("--eval_freq", default=1.0, type=int)
     parser.add_argument("-s", "--save_dir", default=DEFAULT_SAVE_DIR, type=str)
     parser.add_argument('--progress_bar', dest='progress_bar', action='store_true')
     parser.set_defaults(test=False)
@@ -41,10 +41,14 @@ def add_arguments(parser):
     parser.add_argument("--nonlin", default="lrelu", type=str)
 
     # ENCODER
-    parser.add_argument("--emb_dim", default=128, type=int)
+    parser.add_argument("--graph_emb_dim", default=128, type=int)
+    parser.add_argument("--perm_emb_dim", default=128, type=int)
+    parser.add_argument("--node_emb_dim", default=128, type=int)
     parser.add_argument("--node_dim", default=128, type=int)
-    parser.add_argument("--graph_encoder_hidden_dim", default=512, type=int)
-    parser.add_argument("--graph_encoder_num_layers", default=4, type=int)
+    parser.add_argument("--graph_encoder_hidden_dim_gnn", default=512, type=int)
+    parser.add_argument("--graph_encoder_hidden_dim_fnn", default=512, type=int)
+    parser.add_argument("--graph_encoder_num_layers_gnn", default=4, type=int)
+    parser.add_argument("--graph_encoder_num_layers_fnn", default=4, type=int)
 
     # DECODER
     parser.add_argument("--meta_node_dim", default=32, type=int)

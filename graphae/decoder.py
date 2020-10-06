@@ -28,8 +28,8 @@ class NodePredictor(torch.nn.Module):
     def __init__(self, num_nodes, input_dim, hidden_dim, num_layers, batch_norm=False, num_node_features=24, non_lin="lrelu"):
         super().__init__()
         self.num_nodes = num_nodes
-        self.num_node_features = num_node_features
-        self.output_dim = num_nodes * num_node_features  # +1 for probability that node exists (mask)
+        self.num_node_features = num_node_features + 1  # +1 for probability that node does not exists
+        self.output_dim = num_nodes * self.num_node_features
         self.fnn = FNN(
             input_dim=input_dim,
             hidden_dim=hidden_dim,

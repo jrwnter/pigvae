@@ -7,7 +7,7 @@ import pytorch_lightning as pl
 import pandas as pd
 from graphae.graph_ae import GraphVAEGAN, postprocess
 from graphae.data import MolecularGraphDataset, add_noise
-from graphae.loss import critic, resemblance_loss, kld_loss
+from graphae.metrics import critic, resemblance_loss, kld_loss
 from graphae.hyperparameter import add_arguments
 from torch.nn.functional import mse_loss, triplet_margin_loss
 

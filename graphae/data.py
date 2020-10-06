@@ -152,3 +152,22 @@ def add_noise(x, adj, mask, std=0.01):
     mask = mask + noise_mask
 
     return x, adj, mask
+
+
+def add_empty_node_type(nodes):
+    shape = nodes.shape
+    mask = torch.all(nodes == 0, axis=-1)
+    empty_node = torch.zeros((shape[0], shape[1], 1)).type_as(nodes)
+    empty_node[mask] = 1
+    nodes = torch.cat((nodes, empty_node), axis=-1)
+    return nodes
+
+
+def add_empty_edge_type(adj):
+    shape = adj.shape
+    adj = adj.unsqueeze(-1)
+    mask = torch.all(adj == 0, axis=-1)
+    empty_edge = torch.zeros((shape[0], shape[1], shape[2], 1)).type_as(adj)
+    empty_edge[mask] = 1
+    adj = torch.cat((adj, empty_edge), axis=-1)
+    return adj
