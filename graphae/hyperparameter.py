@@ -49,6 +49,8 @@ def add_arguments(parser):
     parser.add_argument("--graph_encoder_hidden_dim_fnn", default=512, type=int)
     parser.add_argument("--graph_encoder_num_layers_gnn", default=4, type=int)
     parser.add_argument("--graph_encoder_num_layers_fnn", default=4, type=int)
+    parser.add_argument("--stack_node_emb", default=1, type=int)
+
 
     # DECODER
     parser.add_argument("--meta_node_dim", default=32, type=int)
@@ -60,6 +62,14 @@ def add_arguments(parser):
 
     parser.add_argument("--node_decoder_hidden_dim", default=1024, type=int)
     parser.add_argument("--node_decoder_num_layers", default=3, type=int)
+
+    # PERMUTER
+    parser.add_argument("--permuter_hidden_dim", default=512, type=int)
+    parser.add_argument("--permuter_num_layers", default=3, type=int)
+    parser.add_argument("--sinkhorn_temp", default=1.0, type=float)
+    parser.add_argument("--samples_per_graph", default=1, type=int)
+    parser.add_argument("--sinkhorn_noise_factor", default=1.0, type=float)
+    parser.add_argument("--sinkhorn_num_iterations", default=20, type=int)
 
     # DATA
     parser.add_argument("--data_path", default=DEFAULT_DATA_PATH, type=str)

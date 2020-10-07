@@ -14,9 +14,9 @@ class PLGraphAE(pl.LightningModule):
         self.graph_ae = GraphAE(hparams)
         self.critic = GraphReconstructionLoss(num_node_types=11, num_edge_types=1)
 
-    def forward(self, node_features, adj, mask):
-        node_features, adj = self.graph_ae(node_features, adj, mask)
-        return node_features, adj
+    def forward(self, node_features, adj, mask, training=True):
+        node_features, adj, perms = self.graph_ae(node_features, adj, mask, training)
+        return node_features, adj, perms
 
     def prepare_data(self):
         smiles_df = pd.read_csv("smiles_16_atoms.csv")
@@ -49,20 +49,24 @@ class PLGraphAE(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.graph_ae.parameters())
-        lr_scheduler = torch.optim.lr_scheduler.StepLR(
+        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
-            step_size=1,
-            gamma=0.5
+            factor=0.5,
+            patience=5,
+            cooldown=10,
+            min_lr=1e-6,
         )
         scheduler = {
             'scheduler': lr_scheduler,
+            'interval': 'step',
+            'frequency': self.hparams["eval_freq"] + 1
         }
 
         return [optimizer], [scheduler]
 
     def training_step(self, batch, batch_idx):
         nodes, adj, mask = batch
-        nodes_pred, adj_pred = self(nodes, adj, mask)
+        nodes_pred, adj_pred, _ = self(nodes, adj, mask, training=True)
         node_loss, adj_loss = self.critic(
             nodes_true=nodes,
             adj_true=adj,
@@ -78,7 +82,7 @@ class PLGraphAE(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         nodes, adj, mask = batch
-        nodes_pred, adj_pred = self(nodes, adj, mask)
+        nodes_pred, adj_pred, _ = self(nodes, adj, mask, training=False)
         node_loss, adj_loss = self.critic(
             nodes_true=nodes,
             adj_true=adj,

@@ -29,35 +29,18 @@ class GraphConv(torch.nn.Module):
 
 
 class GraphEncoder(torch.nn.Module):
-    def __init__(self, input_dim, hidden_dim_gnn, hidden_dim_fnn, node_dim, graph_emb_dim, perm_emb_dim,
-                 num_layers_gnn, num_layers_fnn, num_nodes, batch_norm=False, non_linearity="elu"):
+    def __init__(self, input_dim, hidden_dim, node_dim, stack_node_emb,
+                 num_layers, num_nodes, batch_norm=False, non_linearity="elu"):
         super().__init__()
-        self.num_layers_gnn = num_layers_gnn
         self.node_dim = node_dim
+        self.stack_node_emb = stack_node_emb
+        self.num_layers = num_layers
         self.num_nodes = num_nodes
         self.batch_norm = batch_norm
-        conv_layers = [GraphConv(input_dim, node_dim, hidden_dim_gnn, 3, batch_norm, non_linearity)]
-        conv_layers += [GraphConv(node_dim, node_dim, hidden_dim_gnn, 3, batch_norm, non_linearity) for _ in range(num_layers_gnn - 2)]
-        conv_layers += [GraphConv(node_dim, node_dim, hidden_dim_gnn, 3, batch_norm, non_linearity)]
+        conv_layers = [GraphConv(input_dim, node_dim, hidden_dim, 3, batch_norm, non_linearity)]
+        conv_layers += [GraphConv(node_dim, node_dim, hidden_dim, 3, batch_norm, non_linearity) for _ in range(num_layers - 2)]
+        conv_layers += [GraphConv(node_dim, node_dim, hidden_dim, 3, batch_norm, non_linearity)]
         self.conv_layers = torch.nn.ModuleList(conv_layers)
-        self.fnn_graph_emb = FNN(
-            input_dim=num_layers_gnn * node_dim,
-            hidden_dim=hidden_dim_fnn,
-            output_dim=graph_emb_dim,
-            num_layers=num_layers_fnn,
-            non_linearity=non_linearity,
-            batch_norm=batch_norm,
-            dropout=None
-        )
-        self.fnn_perm_emb = FNN(
-            input_dim=num_nodes * node_dim,
-            hidden_dim=hidden_dim_fnn,
-            output_dim=perm_emb_dim,
-            num_layers=num_layers_fnn,
-            non_linearity=non_linearity,
-            batch_norm=batch_norm,
-            dropout=None
-        )
 
         if non_linearity == "relu":
             self.non_linearity = torch.nn.ReLU()
@@ -68,36 +51,32 @@ class GraphEncoder(torch.nn.Module):
 
     def forward(self, x, adj, mask):
         node_emb = []
-        for i in range(self.num_layers_gnn):
+        for i in range(self.num_layers):
             if i > 0:
                 x = self.non_linearity(x)
             x = self.conv_layers[i](x, adj, mask)
             node_emb.append(x)
-        stacked_node_emb = torch.stack(node_emb, dim=2)
-        graph_emb = torch.sum(stacked_node_emb, dim=1).flatten(start_dim=1)
-        graph_emb = self.fnn_graph_emb(graph_emb)
-        perm_emb = node_emb[-1].view(-1, self.node_dim * self.num_nodes)
-        perm_emb = self.fnn_perm_emb(perm_emb)
-        return graph_emb, perm_emb
+        node_emb = torch.stack(node_emb, dim=2)
+        if not self.stack_node_emb:
+            node_emb = node_emb[:, :, -1]  # just take output of the last layer otherwise of all layers (see. GIN paper)
+        return node_emb
 
 
 class NodeAggregator(torch.nn.Module):
-    def __init__(self, node_dim, emb_dim, hidden_dim, num_layers, num_nodes, batch_norm=False):
+    def __init__(self, input_dim, emb_dim, hidden_dim, num_layers, batch_norm=False, non_linearity="elu"):
         super().__init__()
-        self.num_nodes = num_nodes
-        self.node_dim = node_dim
         self.fnn = FNN(
-            input_dim=node_dim,
+            input_dim=input_dim,
             hidden_dim=hidden_dim,
             output_dim=emb_dim,
             num_layers=num_layers,
-            non_linearity="elu",
+            non_linearity=non_linearity,
             batch_norm=batch_norm
         )
 
-    def forward(self, node_emb, mask):
-        
-        x = torch.mean(node_emb.view(-1, self.num_nodes, self.node_dim), dim=1)
-        # TODO: put activation func here?
+    def forward(self, x):
+        # Aggreaate node embeddings for each node to one embedding for whole graph. Flatten takes care of
+        # potential stacked node embs.
+        x = torch.sum(x, dim=1).flatten(start_dim=1)
         x = self.fnn(x)
         return x

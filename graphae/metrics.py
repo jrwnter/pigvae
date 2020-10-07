@@ -5,11 +5,17 @@ from torch.nn import CrossEntropyLoss
 from graphae.data import add_empty_node_type, add_empty_edge_type
 
 
+NODE_WEIGHTS = torch.Tensor([0.0003, 0.0017, 0.0021, 0.0103, 0.0120, 0.2838,
+                             0.2498, 0.0169, 0.0247, 0.1133, 0.2838, 0.0015])
+
+EDGE_WEIGHTS = torch.Tensor([0.8870, 0.1127])
+
+
 class GraphReconstructionLoss(torch.nn.Module):
     def __init__(self, num_edge_types=1, num_node_types=11):
         super().__init__()
-        self.node_loss = CrossEntropyLoss()  # TODO: add weights for elements
-        self.adj_loss = CrossEntropyLoss()
+        self.node_loss = CrossEntropyLoss(weight=NODE_WEIGHTS)
+        self.adj_loss = CrossEntropyLoss(weight=EDGE_WEIGHTS)
         self.num_edge_types = num_edge_types
         self.num_node_types = num_node_types
 

@@ -1,35 +1,45 @@
 import torch
-from graphae import encoder, decoder
+from graphae import encoder, decoder, permuter, sinkhorn_ops
 from graphae.fully_connected import FNN
 
 
 class Encoder(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
+        self.stack_node_emb = hparams["stack_node_emb"]
+
         self.graph_encoder = encoder.GraphEncoder(
             input_dim=hparams["num_atom_features"],
-            hidden_dim_gnn=hparams["graph_encoder_hidden_dim_gnn"],
-            hidden_dim_fnn=hparams["graph_encoder_hidden_dim_fnn"],
+            hidden_dim=hparams["graph_encoder_hidden_dim_gnn"],
             node_dim=hparams["node_dim"],
             num_nodes=hparams["max_num_nodes"],
-            graph_emb_dim=hparams["graph_emb_dim"],
-            perm_emb_dim=hparams["perm_emb_dim"],
-            num_layers_gnn=hparams["graph_encoder_num_layers_gnn"],
-            num_layers_fnn=hparams["graph_encoder_num_layers_fnn"],
+            num_layers=hparams["graph_encoder_num_layers_gnn"],
+            batch_norm=hparams["batch_norm"],
+            non_linearity=hparams["nonlin"],
+            stack_node_emb=hparams["stack_node_emb"]
+        )
+        self.node_aggregator = encoder.NodeAggregator(
+            input_dim=hparams["graph_encoder_num_layers_gnn"] * hparams["node_dim"] if hparams["stack_node_emb"] else hparams["node_dim"],
+            emb_dim=hparams["graph_emb_dim"],
+            hidden_dim=hparams["graph_encoder_hidden_dim_fnn"],
+            num_layers=hparams["graph_encoder_num_layers_fnn"],
             batch_norm=hparams["batch_norm"],
             non_linearity=hparams["nonlin"]
         )
 
     def forward(self, node_features, adj, mask=None):
-        node_emb, perm_emb = self.graph_encoder(node_features, adj, mask)
-        return node_emb, perm_emb
+        node_embs = self.graph_encoder(node_features, adj, mask)
+        graph_emb = self.node_aggregator(node_embs)
+        if self.stack_node_emb:
+            node_embs = node_embs[:, :, -1]  # just take output (node emb) of the last layer
+        return graph_emb, node_embs
 
 
 class Decoder(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
         self.fnn = FNN(
-            input_dim=hparams["graph_emb_dim"] + hparams["perm_emb_dim"],
+            input_dim=hparams["graph_emb_dim"],
             hidden_dim=hparams["meta_node_decoder_hidden_dim"],
             output_dim=hparams["meta_node_decoder_hidden_dim"],
             num_layers=hparams["meta_node_decoder_num_layers"],
@@ -54,33 +64,60 @@ class Decoder(torch.nn.Module):
             non_lin=hparams["nonlin"]
         )
 
-    def forward(self, graph_emb, perm_emb, do_postprocessing=False):
-        x = torch.cat((graph_emb, perm_emb), dim=1)
-        x = self.fnn(x)
+    def forward(self, graph_emb):
+        x = self.fnn(graph_emb)
         node_logits = self.node_predictor(x)
         adj_logits = self.edge_predictor(x)
-        """if do_postprocessing:
-            nodes = postprocess(
-                logits=node_logits,
-                method="hard_gumbel")
-            adj = postprocess(
-                logits=edge_logits,
-                method="hard_gumbel")
-            adj = adj[:, :, :, 1]"""
         return node_logits, adj_logits
+
+
+class Permuter(torch.nn.Module):
+    def __init__(self, hparams):
+        super().__init__()
+        self.hparams = hparams
+        self.permuter = permuter.SinkhornNetwork(
+            input_dim=hparams["node_dim"],
+            hidden_dim=hparams["permuter_hidden_dim"],
+            num_layers=hparams["permuter_num_layers"],
+            num_nodes=hparams["max_num_nodes"],
+            batch_norm=hparams["batch_norm"],
+            non_linearity=hparams["nonlin"]
+        )
+
+    def forward(self, node_embs, training=True):
+        p_log_alpha = self.permuter(node_embs)
+        # apply the gumbel sinkhorn on log alpha
+        perms, log_alpha_w_noise = sinkhorn_ops.my_gumbel_sinkhorn(
+            log_alpha=p_log_alpha,
+            temp=self.hparams["sinkhorn_temp"],
+            n_samples=self.hparams["samples_per_graph"],
+            noise_factor=self.hparams["sinkhorn_noise_factor"] if training else 0.0,
+            n_iters=self.hparams["sinkhorn_num_iterations"],
+            squeeze=True)
+        """print(soft_perms_inf.shape)
+        inv_soft_perms_flat = sinkhorn_ops.inv_soft_pers_flattened(
+            soft_perms_inf=soft_perms_inf,
+            n_numbers=self.hparams["max_num_nodes"]
+        )"""
+        perms = torch.transpose(perms, 1, 2)
+        return perms
 
 
 class GraphAE(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
-        self.hparams = hparams
         self.encoder = Encoder(hparams)
         self.decoder = Decoder(hparams)
+        self.permuter = Permuter(hparams)
 
-    def forward(self, node_features, adj, mask=None):
-        graph_emb, perm_emb = self.encoder(node_features, adj, mask)
-        node_features, adj = self.decoder(graph_emb, perm_emb)
-        return node_features, adj
+    def forward(self, node_features, adj, mask=None, training=True):
+        graph_emb, node_embs = self.encoder(node_features, adj, mask)
+        node_features, adj = self.decoder(graph_emb)
+        perms = self.permuter(node_embs, training=training)
+        node_features = torch.matmul(perms, node_features)
+        shape = adj.shape
+        adj = torch.matmul(perms, adj.view(shape[0], shape[1], shape[2] * shape[3])).view(shape)
+        return node_features, adj, perms
 
     @staticmethod
     def logits_to_one_hot(nodes, adj):
