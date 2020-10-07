@@ -26,11 +26,11 @@ class MolecularGraphDatasetFromSmiles(Dataset):
     def __getitem__(self, idx):
         smiles = self.smiles[idx]
         graph = MolecularGraph.from_smiles(smiles)
-        graph.x = torch.ones([len(graph.x), 1])
         graph = self.dense_transform(graph)
-        deg = graph.adj.sum(axis=1).unsqueeze(-1)
-        graph.x = torch.cat((graph.x, deg), dim=-1).float()
-        return graph.x, graph.adj, graph.mask
+        x = graph.x[:, :11]
+        adj = graph.adj
+        mask = graph.mask
+        return x, adj, mask
 
 
 class MolecularGraphDataset(Dataset):

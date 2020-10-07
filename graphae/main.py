@@ -9,7 +9,7 @@ from graphae.trainer import PLGraphAE
 from graphae.hyperparameter import add_arguments
 
 
-#logging.getLogger("lightning").setLevel(logging.WARNING)
+logging.getLogger("lightning").setLevel(logging.WARNING)
 
 
 def main(hparams):

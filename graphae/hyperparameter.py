@@ -18,7 +18,7 @@ def add_arguments(parser):
     parser.add_argument('-g', '--gpus', default=1, type=int)
     parser.add_argument('-e', '--num_epochs', default=50, type=int)
     parser.add_argument("--num_eval_samples", default=1024, type=int)
-    parser.add_argument("--eval_freq", default=1.0, type=int)
+    parser.add_argument("--eval_freq", default=2000, type=int)
     parser.add_argument("-s", "--save_dir", default=DEFAULT_SAVE_DIR, type=str)
     parser.add_argument('--progress_bar', dest='progress_bar', action='store_true')
     parser.set_defaults(test=False)
@@ -64,7 +64,7 @@ def add_arguments(parser):
     # DATA
     parser.add_argument("--data_path", default=DEFAULT_DATA_PATH, type=str)
     parser.add_argument("--num_rows", default=None, type=int)
-    parser.add_argument("--num_workers", default=8, type=int)
+    parser.add_argument("--num_workers", default=16, type=int)
     parser.add_argument("--num_atom_features", default=11, type=int) #24
     parser.add_argument("--shuffle", default=1, type=int)
 

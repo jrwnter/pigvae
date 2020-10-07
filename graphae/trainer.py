@@ -1,12 +1,9 @@
-import numpy as np
-import torch
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 import pandas as pd
 from graphae.graph_ae import GraphAE
-from graphae.data import MolecularGraphDataset, add_noise
+from graphae.data import MolecularGraphDatasetFromSmiles
 from graphae.metrics import *
-from torch.nn.functional import mse_loss, triplet_margin_loss
 
 
 class PLGraphAE(pl.LightningModule):
@@ -22,14 +19,15 @@ class PLGraphAE(pl.LightningModule):
         return node_features, adj
 
     def prepare_data(self):
-        if self.hparams["test"]:
-            graphs = np.load("1000_16mnn_graphs.npy")
-            self.train_dataset = MolecularGraphDataset(graphs=graphs[128:], noise=False)
-            self.eval_dataset = MolecularGraphDataset(graphs=graphs[:128], noise=False)
-        else:
-            graphs = np.load("1000000_16mnn_graphs.npy")
-            self.train_dataset = MolecularGraphDataset(graphs=graphs[self.hparams["num_eval_samples"]:], noise=False)
-            self.eval_dataset = MolecularGraphDataset(graphs=graphs[:self.hparams["num_eval_samples"]], noise=False)
+        smiles_df = pd.read_csv("smiles_16_atoms.csv")
+        self.train_dataset = MolecularGraphDatasetFromSmiles(
+            smiles_list=smiles_df.iloc[self.hparams["num_eval_samples"]:].smiles.tolist(),
+            num_nodes=self.hparams["max_num_nodes"],
+        )
+        self.eval_dataset = MolecularGraphDatasetFromSmiles(
+            smiles_list=smiles_df.iloc[:self.hparams["num_eval_samples"]].smiles.tolist(),
+            num_nodes=self.hparams["max_num_nodes"],
+        )
 
     def train_dataloader(self):
         return DataLoader(
@@ -53,7 +51,7 @@ class PLGraphAE(pl.LightningModule):
         optimizer = torch.optim.Adam(self.graph_ae.parameters())
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer=optimizer,
-            step_size=10,
+            step_size=1,
             gamma=0.5
         )
         scheduler = {
