@@ -26,11 +26,13 @@ class MolecularGraphDatasetFromSmiles(Dataset):
     def __getitem__(self, idx):
         smiles = self.smiles[idx]
         graph = MolecularGraph.from_smiles(smiles)
+        edge_index = graph.edge_index
+        edge_attr = graph.edge_attr
         graph = self.dense_transform(graph)
-        x = graph.x[:, :11]
+        x = graph.x[:, 11]
         adj = graph.adj
         mask = graph.mask
-        return x, adj, mask
+        return x, adj, mask, edge_index, edge_attr
 
 
 class MolecularGraphDataset(Dataset):
@@ -67,10 +69,11 @@ class MolecularGraph(Data):
 
     @staticmethod
     def get_graph_properties(mol):
-        edge_index = get_edge_index(mol)
+        edge_attr, edge_index = get_edge_attr_index(mol)
         x = get_node_features(mol)
         graph_props = {
             "edge_index": edge_index,
+            "edge_attr": edge_attr,
             "x": x,
         }
         follow_batch = ["edge_index"]
@@ -96,6 +99,23 @@ def get_edge_index(mol):
     return edge_index
 
 
+def get_edge_attr_index(mol):
+    edge_attr = []
+    edge_index = []
+    for b in mol.GetBonds():
+        edge_attr.append(one_hot_bond_features(b))
+        edge_index.append([b.GetBeginAtomIdx(), b.GetEndAtomIdx()])
+    edge_attr = torch.Tensor(edge_attr)
+    edge_index = torch.LongTensor(edge_index).permute(1, 0)
+    # both direction
+    edge_attr = torch.cat((edge_attr, edge_attr))
+    edge_index = torch.stack(
+        (torch.cat((edge_index[0], edge_index[1])),
+         torch.cat((edge_index[1], edge_index[0])))
+    )
+    return edge_attr, edge_index
+
+
 def get_node_features(mol):
     return torch.Tensor([one_hot_atom_features(a) for a in mol.GetAtoms()])
 
@@ -107,6 +127,18 @@ def one_hot_atom_features(atom):
     atom_feat.extend(one_hot_encoding(atom.GetHybridization(), HYBRIDIZATION_TYPE_LIST))
     atom_feat.extend([atom.GetIsAromatic()])
     return atom_feat
+
+
+def one_hot_bond_features(bond):
+    bond_type = bond.GetBondType()
+    bond_feat = [
+        bond_type == Chem.rdchem.BondType.SINGLE,
+        bond_type == Chem.rdchem.BondType.DOUBLE,
+        bond_type == Chem.rdchem.BondType.TRIPLE,
+        bond_type == Chem.rdchem.BondType.AROMATIC,
+        bond.IsInRing()]
+    return bond_feat
+
 
 def rdkit_mol_from_graph(graph):
     graph = graph.to("cpu")
@@ -165,7 +197,8 @@ def add_empty_node_type(nodes):
 
 def add_empty_edge_type(adj):
     shape = adj.shape
-    adj = adj.unsqueeze(-1)
+    if adj.dim() == 3:
+        adj = adj.unsqueeze(-1)
     mask = torch.all(adj == 0, axis=-1)
     empty_edge = torch.zeros((shape[0], shape[1], shape[2], 1)).type_as(adj)
     empty_edge[mask] = 1

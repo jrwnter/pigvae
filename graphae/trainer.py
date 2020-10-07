@@ -12,7 +12,7 @@ class PLGraphAE(pl.LightningModule):
         super().__init__()
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
-        self.critic = GraphReconstructionLoss(num_node_types=11, num_edge_types=1)
+        self.critic = GraphReconstructionLoss(num_node_types=11, num_edge_types=5)
 
     def forward(self, node_features, adj, mask, training=True):
         node_features, adj, perms = self.graph_ae(node_features, adj, mask, training)
