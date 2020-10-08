@@ -14,7 +14,7 @@ EDGE_WEIGHTS = torch.Tensor([5.2475e-03, 4.3232e-02, 9.4001e-01, 6.6112e-03, 4.7
 class GraphReconstructionLoss(torch.nn.Module):
     def __init__(self, num_edge_types=1, num_node_types=11):
         super().__init__()
-        self._loss = CrossEntropyLoss(weight=NODE_WEIGHTS)
+        self.node_loss = CrossEntropyLoss(weight=NODE_WEIGHTS)
         self.adj_loss = CrossEntropyLoss(weight=EDGE_WEIGHTS)
         self.num_edge_types = num_edge_types
         self.num_node_types = num_node_types

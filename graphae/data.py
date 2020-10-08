@@ -25,14 +25,11 @@ class MolecularGraphDatasetFromSmiles(Dataset):
 
     def __getitem__(self, idx):
         smiles = self.smiles[idx]
-        graph = MolecularGraph.from_smiles(smiles)
-        edge_index = graph.edge_index
-        edge_attr = graph.edge_attr
-        graph = self.dense_transform(graph)
-        x = graph.x[:, 11]
-        adj = graph.adj
-        mask = graph.mask
-        return x, adj, mask, edge_index, edge_attr
+        sparse_graph = MolecularGraph.from_smiles(smiles)
+        dense_graph = self.dense_transform(sparse_graph.clone())
+        dense_graph.x = dense_graph.x.unsqueeze(0)
+        dense_graph.adj = dense_graph.adj.unsqueeze(0)
+        return sparse_graph, dense_graph
 
 
 class MolecularGraphDataset(Dataset):
@@ -74,7 +71,7 @@ class MolecularGraph(Data):
         graph_props = {
             "edge_index": edge_index,
             "edge_attr": edge_attr,
-            "x": x,
+            "x": x[:, :11],
         }
         follow_batch = ["edge_index"]
         return graph_props, follow_batch
@@ -204,3 +201,17 @@ def add_empty_edge_type(adj):
     empty_edge[mask] = 1
     adj = torch.cat((adj, empty_edge), axis=-1)
     return adj
+
+
+def batch_to_dense(batch, num_nodes):
+    dense_transform = ToDense(num_nodes=num_nodes)
+    dense_graphs = [dense_transform(batch) for batch in batch.to_data_list()]
+    x = []
+    adj = []
+    for graph in dense_graphs:
+        x.append(graph.x)
+        adj.append(graph.adj)
+    x = torch.stack(x, dim=0)
+    adj = torch.stack(adj, dim=0)
+    return x, adj
+

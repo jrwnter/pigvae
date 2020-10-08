@@ -3,13 +3,14 @@ from graphae.fully_connected import FNN
 
 
 class EdgePredictor(torch.nn.Module):
-    def __init__(self, num_nodes, input_dim, hidden_dim, num_layers, batch_norm=False, non_lin="lrelu"):
+    def __init__(self, num_nodes, input_dim, hidden_dim, num_layers, num_edge_features, batch_norm=False, non_lin="lrelu"):
         super().__init__()
         self.num_nodes = num_nodes
+        self.num_edge_features = num_edge_features + 1
         self.fnn = FNN(
             input_dim=input_dim,
             hidden_dim=hidden_dim,
-            output_dim=num_nodes * num_nodes * 2,
+            output_dim=num_nodes * num_nodes * self.num_edge_features,
             num_layers=num_layers,
             non_linearity=non_lin,
             batch_norm=batch_norm
@@ -19,7 +20,7 @@ class EdgePredictor(torch.nn.Module):
         # x: [batch_size, input_dim]
         batch_size = x.shape[0]
         x = self.fnn(x)
-        x = x.view(batch_size, self.num_nodes, self.num_nodes, 2)
+        x = x.view(batch_size, self.num_nodes, self.num_nodes, self.num_edge_features)
         x = (x + x.permute(0, 2, 1, 3)) / 2
         return x
 
