@@ -16,8 +16,8 @@ class PLGraphAE(pl.LightningModule):
         self.critic = GraphReconstructionLoss(num_node_types=11, num_edge_types=5)
 
     def forward(self, graph, training=True):
-        node_logits, adj_logits, perms = self.graph_ae(graph, training)
-        return node_logits, adj_logits, perms
+        node_logits, adj_logits, mask_logits, perms = self.graph_ae(graph, training)
+        return node_logits, adj_logits, mask_logits, perms
 
     def prepare_data(self):
         num_smiles = 1000000 if self.hparams["test"] else None
@@ -68,40 +68,47 @@ class PLGraphAE(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
-        nodes_pred, adj_pred, _ = self(graph=sparse_graph, training=True)
-        nodes_true, adj_true = dense_graph.x, dense_graph.adj
-        node_loss, adj_loss = self.critic(
+        nodes_pred, adj_pred, mask_pred, _ = self(graph=sparse_graph, training=True)
+        nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
+        loss = self.critic(
             nodes_true=nodes_true,
             adj_true=adj_true,
+            mask_true=mask_true,
             nodes_pred=nodes_pred,
-            adj_pred=adj_pred
+            adj_pred=adj_pred,
+            mask_pred=mask_pred
         )
-        output = {
-            "node_loss": node_loss,
-            "adj_loss": adj_loss,
-            "loss": node_loss + adj_loss
-        }
-        return output
+        return loss
 
     def validation_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
-        nodes_pred, adj_pred, _ = self(graph=sparse_graph, training=False)
-        nodes_true, adj_true = dense_graph.x, dense_graph.adj
-        node_loss, adj_loss = self.critic(
+        nodes_pred, adj_pred, mask_pred, _ = self(graph=sparse_graph, training=False)
+        nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
+        loss = self.critic(
             nodes_true=nodes_true,
             adj_true=adj_true,
+            mask_true=mask_true,
             nodes_pred=nodes_pred,
-            adj_pred=adj_pred
+            adj_pred=adj_pred,
+            mask_pred=mask_pred
         )
-        nodes_pred_oh, adj_pred_oh = self.graph_ae.logits_to_one_hot(nodes_pred, adj_pred)
-        node_acc = node_balanced_accuracy(input=nodes_pred_oh, target=nodes_true)
-        adj_acc = adj_balanced_accuracy(input=adj_pred_oh, target=adj_true)
+        #nodes_pred_oh, adj_pred_oh = self.graph_ae.logits_to_one_hot(nodes_pred, adj_pred)
+        element_type_acc, charge_type_acc, hybridization_type_acc = node_balanced_accuracy(
+            nodes_pred=nodes_pred,
+            nodes_true=nodes_true,
+            mask=mask_true
+        )
+        adj_acc = adj_balanced_accuracy(
+            adj_pred=adj_pred,
+            adj_true=adj_true,
+            mask=mask_true
+        )
         output = {
-            "node_loss": node_loss,
-            "adj_loss": adj_loss,
-            "loss": node_loss + adj_loss,
-            "node_acc": node_acc,
-            "adj_acc": adj_acc,
+            **loss,
+            "element_type_acc": element_type_acc,
+            "charge_type_acc": charge_type_acc,
+            "hybridization_type_acc": hybridization_type_acc,
+            "adj_acc": adj_acc
         }
         return output
 
@@ -109,7 +116,7 @@ class PLGraphAE(pl.LightningModule):
         out = {}
         for key in outputs[0].keys():
             out[key] = torch.stack([output[key] for output in outputs]).mean()
-        tqdm_dict = {'val_loss': out["loss"], "node_acc": out["node_acc"], "adj_acc": out["adj_acc"]}
+        tqdm_dict = {'val_loss': out["loss"]}
         return {'val_loss': out["loss"], 'log': out, "progress_bar": tqdm_dict}
 
 

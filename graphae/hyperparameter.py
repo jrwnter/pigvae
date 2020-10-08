@@ -1,6 +1,6 @@
 import os
 DEFAULT_DATA_PATH = "/home/ggwaq/projects/graph_vae/smiles_atom_count2.csv"
-DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves5")
+DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves6")
 
 
 def add_arguments(parser):
@@ -35,6 +35,7 @@ def add_arguments(parser):
 
     # GENERAL GRAPH PROPERTIES
     parser.add_argument("--max_num_nodes", default=16, type=int)
+    parser.add_argument("--num_node_features", default=23, type=int)
     parser.add_argument("--num_edge_features", default=5, type=int)
     parser.add_argument("--batch_norm", dest='batch_norm', action='store_true')
     parser.set_defaults(batch_norm=False)
@@ -76,7 +77,6 @@ def add_arguments(parser):
     parser.add_argument("--data_path", default=DEFAULT_DATA_PATH, type=str)
     parser.add_argument("--num_rows", default=None, type=int)
     parser.add_argument("--num_workers", default=16, type=int)
-    parser.add_argument("--num_atom_features", default=11, type=int) #24
     parser.add_argument("--shuffle", default=1, type=int)
 
     return parser

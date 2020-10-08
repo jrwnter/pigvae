@@ -1,8 +1,8 @@
 import torch
 from graphae import encoder, decoder, permuter, sinkhorn_ops
 from graphae.fully_connected import FNN
-
 from time import time
+
 
 class Encoder(torch.nn.Module):
     def __init__(self, hparams):
@@ -10,7 +10,7 @@ class Encoder(torch.nn.Module):
         self.stack_node_emb = hparams["stack_node_emb"]
 
         self.graph_encoder = encoder.GraphEncoder(
-            input_dim=hparams["num_atom_features"],
+            input_dim=hparams["num_node_features"],
             hidden_dim=hparams["graph_encoder_hidden_dim_gnn"],
             node_dim=hparams["node_dim"],
             num_nodes=hparams["max_num_nodes"],
@@ -64,7 +64,7 @@ class Decoder(torch.nn.Module):
             hidden_dim=hparams["node_decoder_hidden_dim"],
             num_layers=hparams["node_decoder_num_layers"],
             batch_norm=hparams["batch_norm"],
-            num_node_features=hparams["num_atom_features"],
+            num_node_features=hparams["num_node_features"],
             non_lin=hparams["nonlin"]
         )
 
@@ -120,22 +120,21 @@ class GraphAE(torch.nn.Module):
         self.permuter = Permuter(hparams)
 
     def forward(self, graph, training=True):
-
         graph_emb, node_embs = self.encoder(graph)
         node_logits, adj_logits = self.decoder(graph_emb)
         node_embs = node_embs_to_dense(node_embs, num_nodes=self.num_nodes, batch_idxs=graph.batch)
         perms = self.permuter(node_embs, training=training)
-        node_features = torch.matmul(perms, node_logits)
+        node_logits = torch.matmul(perms, node_logits)
         shape = adj_logits.shape
-        adj = torch.matmul(perms, adj_logits.view(shape[0], shape[1], shape[2] * shape[3])).view(shape)
-        return node_features, adj, perms
+        adj_logits = torch.matmul(perms, adj_logits.view(shape[0], shape[1], shape[2] * shape[3])).view(shape)
+        mask_logits, node_logits = node_logits[:, :, 0], node_logits[:, :, 1:]
+        return node_logits, adj_logits, mask_logits, perms
 
     @staticmethod
     def logits_to_one_hot(nodes, adj):
         nodes_shape = nodes.shape
         nodes = torch.argmax(nodes, axis=-1).unsqueeze(-1)
         nodes = torch.zeros(nodes_shape).type_as(nodes).scatter_(2, nodes, 1)
-        #nodes = nodes[:, :, :-1]  # remove empty node
         adj_shape = adj.shape
         adj = torch.argmax(adj, axis=-1).unsqueeze(-1)
         adj = torch.zeros(adj_shape).type_as(adj).scatter_(3, adj, 1)

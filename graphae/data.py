@@ -29,6 +29,7 @@ class MolecularGraphDatasetFromSmiles(Dataset):
         dense_graph = self.dense_transform(sparse_graph.clone())
         dense_graph.x = dense_graph.x.unsqueeze(0)
         dense_graph.adj = dense_graph.adj.unsqueeze(0)
+        dense_graph.mask = dense_graph.mask.unsqueeze(0)
         return sparse_graph, dense_graph
 
 
@@ -71,7 +72,7 @@ class MolecularGraph(Data):
         graph_props = {
             "edge_index": edge_index,
             "edge_attr": edge_attr,
-            "x": x[:, :11],
+            "x": x,
         }
         follow_batch = ["edge_index"]
         return graph_props, follow_batch
@@ -122,7 +123,7 @@ def one_hot_atom_features(atom):
     atom_feat.extend(one_hot_encoding(atom.GetSymbol(), ELEM_LIST))
     atom_feat.extend(one_hot_encoding(atom.GetFormalCharge(), CHARGE_LIST))
     atom_feat.extend(one_hot_encoding(atom.GetHybridization(), HYBRIDIZATION_TYPE_LIST))
-    atom_feat.extend([atom.GetIsAromatic()])
+    #atom_feat.extend([atom.GetIsAromatic()])
     return atom_feat
 
 
