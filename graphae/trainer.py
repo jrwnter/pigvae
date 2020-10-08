@@ -82,7 +82,7 @@ class PLGraphAE(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
-        nodes_pred, adj_pred, mask_pred, _ = self(graph=sparse_graph, training=False)
+        nodes_pred, adj_pred, mask_pred, _ = self(graph=sparse_graph, training=True)
         nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
         loss = self.critic(
             nodes_true=nodes_true,
@@ -103,12 +103,17 @@ class PLGraphAE(pl.LightningModule):
             adj_true=adj_true,
             mask=mask_true
         )
+        mask_acc = mask_balenced_accuracy(
+            mask_pred=mask_pred,
+            mask_true=mask_true
+        )
         output = {
             **loss,
             "element_type_acc": element_type_acc,
             "charge_type_acc": charge_type_acc,
             "hybridization_type_acc": hybridization_type_acc,
-            "adj_acc": adj_acc
+            "adj_acc": adj_acc,
+            "mask_acc": mask_acc
         }
         return output
 

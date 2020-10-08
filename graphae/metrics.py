@@ -109,7 +109,9 @@ def node_balanced_accuracy(nodes_pred, nodes_true, mask):
 
 
 def mask_balenced_accuracy(mask_pred, mask_true):
-    mask_true = mask_true.float()
+    mask_true = mask_true.float().flatten()
+    mask_pred = mask_pred.flatten() > 0.5
+    mask_pred = mask_pred.long()
     acc = scipy_balanced_accuracy(mask_pred, mask_true)
     return acc
 
@@ -118,7 +120,7 @@ def adj_balanced_accuracy(adj_pred, adj_true, mask):
     adj_mask = mask.unsqueeze(1) * mask.unsqueeze(2)
     adj_true = add_empty_edge_type(adj_true)
     adj_true, adj_pred = adj_true[adj_mask], adj_pred[adj_mask]
-    acc = scipy_balanced_accuracy(adj_pred, adj_pred)
+    acc = scipy_balanced_accuracy(adj_pred, adj_true)
     return acc
 
 

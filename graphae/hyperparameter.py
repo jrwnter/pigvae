@@ -17,8 +17,8 @@ def add_arguments(parser):
     parser.add_argument('-i', '--id', type=int, default=0)
     parser.add_argument('-g', '--gpus', default=1, type=int)
     parser.add_argument('-e', '--num_epochs', default=50, type=int)
-    parser.add_argument("--num_eval_samples", default=1024, type=int)
-    parser.add_argument("--eval_freq", default=2000, type=int)
+    parser.add_argument("--num_eval_samples", default=10000, type=int)
+    parser.add_argument("--eval_freq", default=1000, type=int)
     parser.add_argument("-s", "--save_dir", default=DEFAULT_SAVE_DIR, type=str)
     parser.add_argument('--progress_bar', dest='progress_bar', action='store_true')
     parser.set_defaults(test=False)
@@ -34,7 +34,7 @@ def add_arguments(parser):
     parser.set_defaults(vae=False)
 
     # GENERAL GRAPH PROPERTIES
-    parser.add_argument("--max_num_nodes", default=16, type=int)
+    parser.add_argument("--max_num_nodes", default=32, type=int)
     parser.add_argument("--num_node_features", default=23, type=int)
     parser.add_argument("--num_edge_features", default=5, type=int)
     parser.add_argument("--batch_norm", dest='batch_norm', action='store_true')
@@ -76,7 +76,7 @@ def add_arguments(parser):
     # DATA
     parser.add_argument("--data_path", default=DEFAULT_DATA_PATH, type=str)
     parser.add_argument("--num_rows", default=None, type=int)
-    parser.add_argument("--num_workers", default=16, type=int)
+    parser.add_argument("--num_workers", default=32, type=int)
     parser.add_argument("--shuffle", default=1, type=int)
 
     return parser
