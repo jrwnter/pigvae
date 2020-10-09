@@ -29,6 +29,7 @@ class MolecularGraphDatasetFromSmiles(Dataset):
         dense_graph = self.dense_transform(sparse_graph.clone())
         dense_graph.x = dense_graph.x.unsqueeze(0)
         dense_graph.adj = dense_graph.adj.unsqueeze(0)
+        dense_graph.adj = add_empty_edge_type(dense_graph.adj)
         dense_graph.mask = dense_graph.mask.unsqueeze(0)
         return sparse_graph, dense_graph
 
@@ -134,7 +135,8 @@ def one_hot_bond_features(bond):
         bond_type == Chem.rdchem.BondType.DOUBLE,
         bond_type == Chem.rdchem.BondType.TRIPLE,
         bond_type == Chem.rdchem.BondType.AROMATIC,
-        bond.IsInRing()]
+        #bond.IsInRing()
+    ]
     return bond_feat
 
 

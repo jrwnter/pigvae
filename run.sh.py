@@ -1,0 +1,3 @@
+#CUDA_VISIBLE_DEVICES=6 python graphae/main.py -i 6 -g 1 -b 1024 --graph_emb_dim 256 --graph_encoder_num_layers_gnn 6 --sinkhorn_temp 10 # target 0.1
+#CUDA_VISIBLE_DEVICES=9 python graphae/main.py -i 7 -g 1 -b 1024 --graph_emb_dim 256 --graph_encoder_num_layers_gnn 6 --sinkhorn_temp 10 # target 0.01
+#CUDA_VISIBLE_DEVICES=9 python graphae/main.py -i 8 -g 1 -b 1024 --graph_emb_dim 256 --graph_encoder_num_layers_gnn 6 --sinkhorn_temp 10 # target 0.08

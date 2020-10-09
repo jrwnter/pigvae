@@ -13,10 +13,26 @@ class PLGraphAE(pl.LightningModule):
         super().__init__()
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
-        self.critic = GraphReconstructionLoss(num_node_types=11, num_edge_types=5)
+        self.critic = GraphReconstructionLoss()
+        self.sinkhorn_temp_decay = TempDecay(
+            start_temp=self.hparams["sinkhorn_temp"],
+            #target_metric_value=self.hparams["sinkhorn_decay_target_metric_value"],
+            target_metric_value=0.08,
+            factor=0.75,
+            cooldown=20,
+            patience=5
+        )
 
-    def forward(self, graph, training=True):
-        node_logits, adj_logits, mask_logits, perms = self.graph_ae(graph, training)
+    def forward(self, graph, sinkhorn_temp=None, sinkhorn_noise=None):
+        if sinkhorn_temp is None:
+            sinkhorn_temp = self.sinkhorn_temp_decay.temp
+        if sinkhorn_noise is None:
+            sinkhorn_noise = self.hparams["sinkhorn_noise_factor"]
+        node_logits, adj_logits, mask_logits, perms = self.graph_ae(
+            graph=graph,
+            sinkhorn_temp=sinkhorn_temp,
+            sinkhorn_noise=sinkhorn_noise,
+        )
         return node_logits, adj_logits, mask_logits, perms
 
     def prepare_data(self):
@@ -51,7 +67,7 @@ class PLGraphAE(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.graph_ae.parameters())
-        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        """lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
             factor=0.5,
             patience=5,
@@ -62,13 +78,22 @@ class PLGraphAE(pl.LightningModule):
             'scheduler': lr_scheduler,
             'interval': 'step',
             'frequency': self.hparams["eval_freq"] + 1
+        }"""
+
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer=optimizer,
+            step_size=1,
+            gamma=0.9,
+        )
+        scheduler = {
+            'scheduler': lr_scheduler,
         }
 
         return [optimizer], [scheduler]
 
     def training_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
-        nodes_pred, adj_pred, mask_pred, _ = self(graph=sparse_graph, training=True)
+        nodes_pred, adj_pred, mask_pred, _ = self(sparse_graph)
         nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
         loss = self.critic(
             nodes_true=nodes_true,
@@ -82,7 +107,7 @@ class PLGraphAE(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
-        nodes_pred, adj_pred, mask_pred, _ = self(graph=sparse_graph, training=True)
+        nodes_pred, adj_pred, mask_pred, perms = self(graph=sparse_graph)
         nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
         loss = self.critic(
             nodes_true=nodes_true,
@@ -113,7 +138,8 @@ class PLGraphAE(pl.LightningModule):
             "charge_type_acc": charge_type_acc,
             "hybridization_type_acc": hybridization_type_acc,
             "adj_acc": adj_acc,
-            "mask_acc": mask_acc
+            "mask_acc": mask_acc,
+            "mean_max_perm_value": perms.max(axis=1)[0].mean()
         }
         return output
 
@@ -122,7 +148,35 @@ class PLGraphAE(pl.LightningModule):
         for key in outputs[0].keys():
             out[key] = torch.stack([output[key] for output in outputs]).mean()
         tqdm_dict = {'val_loss': out["loss"]}
+        self.sinkhorn_temp_decay(out["loss"])
+        out["sinkhorn_temp"] = self.sinkhorn_temp_decay.temp
+
         return {'val_loss': out["loss"], 'log': out, "progress_bar": tqdm_dict}
+
+
+
+class TempDecay(object):
+    def __init__(self, start_temp, target_metric_value, factor, cooldown=0, patience=0):
+        self.temp = start_temp
+        self.factor = factor
+        self.cooldown = cooldown
+        self.patience = patience
+        self.target_metric_value = target_metric_value
+        self.num_steps_below = 0
+        self.steps_sice_decay = 0
+
+    def __call__(self, metric):
+        self.steps_sice_decay += 1
+        if metric <= self.target_metric_value:
+            self.num_steps_below += 1
+            if self.steps_sice_decay >= self.cooldown:
+                if self.num_steps_below >= self.patience:
+                    self.temp *= self.factor
+                    self.steps_sice_decay = 0
+        else:
+            self.num_steps_below = 0
+
+
 
 
 

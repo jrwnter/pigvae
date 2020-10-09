@@ -16,7 +16,8 @@ class Encoder(torch.nn.Module):
             num_nodes=hparams["max_num_nodes"],
             num_edge_features=hparams["num_edge_features"],
             num_layers=hparams["graph_encoder_num_layers_gnn"],
-            batch_norm=hparams["batch_norm"],
+            #batch_norm=hparams["batch_norm"],
+            batch_norm=False,
             non_linearity=hparams["nonlin"],
             stack_node_emb=hparams["stack_node_emb"]
         )
@@ -88,25 +89,17 @@ class Permuter(torch.nn.Module):
             non_linearity=hparams["nonlin"]
         )
 
-    def forward(self, node_embs, training=True):
+    def forward(self, node_embs, sinkhorn_temp, sinkhorn_noise):
         p_log_alpha = self.permuter(node_embs)
         # apply the gumbel sinkhorn on log alpha
         perms, log_alpha_w_noise = sinkhorn_ops.my_gumbel_sinkhorn(
             log_alpha=p_log_alpha,
-            temp=self.hparams["sinkhorn_temp"],
+            temp=sinkhorn_temp,
             n_samples=self.hparams["samples_per_graph"],
-            noise_factor=self.hparams["sinkhorn_noise_factor"],
+            noise_factor=sinkhorn_noise,
             n_iters=self.hparams["sinkhorn_num_iterations"],
             squeeze=True)
 
-        if not training:
-            perms, log_alpha_w_noise = sinkhorn_ops.my_gumbel_sinkhorn(
-                log_alpha=perms,
-                temp=0.000001,
-                n_samples=self.hparams["samples_per_graph"],
-                noise_factor=0,
-                n_iters=30,
-                squeeze=True)
         perms = torch.transpose(perms, 1, 2)
         return perms
 
@@ -119,11 +112,11 @@ class GraphAE(torch.nn.Module):
         self.decoder = Decoder(hparams)
         self.permuter = Permuter(hparams)
 
-    def forward(self, graph, training=True):
+    def forward(self, graph, sinkhorn_temp, sinkhorn_noise):
         graph_emb, node_embs = self.encoder(graph)
         node_logits, adj_logits = self.decoder(graph_emb)
         node_embs = node_embs_to_dense(node_embs, num_nodes=self.num_nodes, batch_idxs=graph.batch)
-        perms = self.permuter(node_embs, training=training)
+        perms = self.permuter(node_embs, sinkhorn_temp, sinkhorn_noise)
         node_logits = torch.matmul(perms, node_logits)
         shape = adj_logits.shape
         adj_logits = torch.matmul(perms, adj_logits.view(shape[0], shape[1], shape[2] * shape[3])).view(shape)
@@ -132,9 +125,14 @@ class GraphAE(torch.nn.Module):
 
     @staticmethod
     def logits_to_one_hot(nodes, adj):
-        nodes_shape = nodes.shape
-        nodes = torch.argmax(nodes, axis=-1).unsqueeze(-1)
-        nodes = torch.zeros(nodes_shape).type_as(nodes).scatter_(2, nodes, 1)
+        batch_size, num_nodes = nodes.size(0), nodes.size(1)
+        element_type = torch.argmax(nodes[:, :, :11], axis=-1).unsqueeze(-1)
+        element_type = torch.zeros((batch_size, num_nodes, 11)).type_as(element_type).scatter_(2, element_type, 1)
+        charge_type = torch.argmax(nodes[:, :, 11:16], axis=-1).unsqueeze(-1)
+        charge_type = torch.zeros((batch_size, num_nodes, 5)).type_as(charge_type).scatter_(2, charge_type, 1)
+        hybridization_type = torch.argmax(nodes[:, :, 16:], axis=-1).unsqueeze(-1)
+        hybridization_type = torch.zeros((batch_size, num_nodes, 7)).type_as(hybridization_type).scatter_(2, hybridization_type, 1)
+        nodes = torch.cat((element_type, charge_type, hybridization_type), dim=-1)
         adj_shape = adj.shape
         adj = torch.argmax(adj, axis=-1).unsqueeze(-1)
         adj = torch.zeros(adj_shape).type_as(adj).scatter_(3, adj, 1)

@@ -30,13 +30,14 @@ def add_arguments(parser):
     parser.add_argument("--lr_scheduler_factor", default=0.5, type=float)
     parser.add_argument("--lr_scheduler_patience", default=2, type=int)
     parser.add_argument("--lr_scheduler_cooldown", default=5, type=int)
+    #parser.add_argument("--sinkhorn_decay_target_metric_value", default=0.1, type=float)
     parser.add_argument("--vae", dest='vae', action='store_true')
     parser.set_defaults(vae=False)
 
     # GENERAL GRAPH PROPERTIES
     parser.add_argument("--max_num_nodes", default=32, type=int)
     parser.add_argument("--num_node_features", default=23, type=int)
-    parser.add_argument("--num_edge_features", default=5, type=int)
+    parser.add_argument("--num_edge_features", default=4, type=int)
     parser.add_argument("--batch_norm", dest='batch_norm', action='store_true')
     parser.set_defaults(batch_norm=False)
 

@@ -2,22 +2,20 @@ import torch
 import numpy as np
 from sklearn.metrics import balanced_accuracy_score
 from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss
-from graphae.data import add_empty_node_type, add_empty_edge_type
 
 
 ELEMENT_TYPE_WEIGHTS = torch.Tensor(
-    [0.0003, 0.0017, 0.0021, 0.0103, 0.0120, 0.2838, 0.2498, 0.0169, 0.0247, 0.1133, 0.2838])
-CHARGE_TYPE_WEIGHTS = torch.Tensor([0.2603, 0.2603, 0.2185, 0.2603, 0.0006])
+    [1.1331e-04, 7.1108e-04, 8.0928e-04, 4.9133e-03, 5.2829e-03, 2.5689e-01,
+     2.7862e-01, 8.5392e-03, 1.9235e-02, 1.4627e-01, 2.7862e-01])
+CHARGE_TYPE_WEIGHTS = torch.Tensor([0.2605, 0.2605, 0.2180, 0.2605, 0.0006])
 HYBRIDIZATION_TYPE_WEIGHT = torch.Tensor(
-    [2.4987e-01, 4.8807e-04, 5.0471e-06, 8.5090e-06, 2.4987e-01, 2.4987e-01,
-        2.4987e-01])
-
-EDGE_WEIGHTS = torch.Tensor([5.2475e-03, 4.3232e-02, 9.4001e-01, 6.6112e-03, 4.7667e-03, 1.2940e-04])
-MASK_POS_WEIGHT = torch.Tensor([0.3216])
+    [2.4990e-01, 3.8090e-04, 3.9730e-06, 6.6788e-06, 2.4990e-01, 2.4990e-01, 2.4990e-01])
+EDGE_WEIGHTS = torch.Tensor([5.3680e-03, 4.4790e-02, 9.4289e-01, 6.8177e-03, 1.3267e-04])
+MASK_POS_WEIGHT = torch.Tensor([0.3221])
 
 
 class GraphReconstructionLoss(torch.nn.Module):
-    def __init__(self, num_edge_types=1, num_node_types=11):
+    def __init__(self):
         super().__init__()
         self.mask_loss = BCEWithLogitsLoss(pos_weight=MASK_POS_WEIGHT)
         self.element_type_loss = CrossEntropyLoss(weight=ELEMENT_TYPE_WEIGHTS)
@@ -51,7 +49,6 @@ class GraphReconstructionLoss(torch.nn.Module):
 
         adj_mask = mask_true.unsqueeze(1) * mask_true.unsqueeze(2)
         adj_pred = adj_pred[adj_mask]
-        adj_true = add_empty_edge_type(adj_true)
         adj_true = torch.argmax(adj_true[adj_mask], axis=-1).flatten()
         adjacency_loss = self.adj_loss(
             input=adj_pred,
@@ -69,17 +66,6 @@ class GraphReconstructionLoss(torch.nn.Module):
             "loss": total_loss
         }
         return loss
-
-
-def node_accuracy(input, target):
-    target = add_empty_node_type(target)
-    acc = (input == target).float().mean()
-    return acc
-
-
-def adj_accuracy(input, target):
-    acc = (input == target).float().mean()
-    return acc
 
 
 def scipy_balanced_accuracy(input, target):
@@ -100,8 +86,8 @@ def scipy_balanced_accuracy(input, target):
 def node_balanced_accuracy(nodes_pred, nodes_true, mask):
     nodes_true, nodes_pred = nodes_true[mask], nodes_pred[mask]
     element_type_true, element_type_pred = nodes_true[:, :11], nodes_pred[:, :11]
-    charge_type_true, charge_type_pred = nodes_true[:, 11:17], nodes_pred[:, 11:17]
-    hybridization_type_true, hybridization_type_pred = nodes_true[:, 17:], nodes_pred[:, 17:]
+    charge_type_true, charge_type_pred = nodes_true[:, 11:16], nodes_pred[:, 11:16]
+    hybridization_type_true, hybridization_type_pred = nodes_true[:, 16:], nodes_pred[:, 16:]
     element_type_acc = scipy_balanced_accuracy(element_type_pred, element_type_true)
     charge_type_acc = scipy_balanced_accuracy(charge_type_pred, charge_type_true)
     hybridization_type_acc = scipy_balanced_accuracy(hybridization_type_pred, hybridization_type_true)
@@ -118,7 +104,6 @@ def mask_balenced_accuracy(mask_pred, mask_true):
 
 def adj_balanced_accuracy(adj_pred, adj_true, mask):
     adj_mask = mask.unsqueeze(1) * mask.unsqueeze(2)
-    adj_true = add_empty_edge_type(adj_true)
     adj_true, adj_pred = adj_true[adj_mask], adj_pred[adj_mask]
     acc = scipy_balanced_accuracy(adj_pred, adj_true)
     return acc
