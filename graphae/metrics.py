@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from sklearn.metrics import balanced_accuracy_score
-from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss
+from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss, L1Loss
 
 
 ELEMENT_TYPE_WEIGHTS = torch.Tensor(
@@ -12,6 +12,20 @@ HYBRIDIZATION_TYPE_WEIGHT = torch.Tensor(
     [2.4990e-01, 3.8090e-04, 3.9730e-06, 6.6788e-06, 2.4990e-01, 2.4990e-01, 2.4990e-01])
 EDGE_WEIGHTS = torch.Tensor([5.3680e-03, 4.4790e-02, 9.4289e-01, 6.8177e-03, 1.3267e-04])
 MASK_POS_WEIGHT = torch.Tensor([0.3221])
+
+
+class Critic(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.reconstruction_loss = GraphReconstructionLoss()
+        self.permutation_matrix_penalty = PermutaionMatrixPenalty()
+
+    def forward(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, perm):
+        recon_loss = self.reconstruction_loss(nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred)
+        perm_loss = self.permutation_matrix_penalty(perm)
+        loss = {**recon_loss, "perm_loss": perm_loss}
+        loss["loss"] += loss["perm_loss"]
+        return loss
 
 
 class GraphReconstructionLoss(torch.nn.Module):
@@ -65,6 +79,29 @@ class GraphReconstructionLoss(torch.nn.Module):
             "node_loss": node_loss,
             "loss": total_loss
         }
+        return loss
+
+
+class PermutaionMatrixPenalty(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def row_col_penalty(self, perm, axis):
+        # v: [batch_size, num_nodes, num_nodes]
+        loss = torch.sum(torch.sum(torch.abs(perm), axis=axis) - torch.sqrt(torch.sum(torch.pow(perm, 2), axis=axis)), axis=1)
+        return loss
+
+    def forward(self, perm):
+        batch_size = perm.size(0)
+        num_nodes = perm.size(1)
+        identity = torch.ones((batch_size, num_nodes)).type_as(perm)
+        penalty = self.row_col_penalty(perm, axis=1) + self.row_col_penalty(perm, axis=2)
+        constrain_col = torch.abs(torch.sum(perm, axis=1) - identity).mean(axis=1)
+        constrain_row = torch.abs(torch.sum(perm, axis=2) - identity).mean(axis=1)
+        #constrain_pos = torch.min(torch.zeros_like(perm), perm).mean(axis=(1, 2))
+        constrain = constrain_col + constrain_row #+ constrain_pos
+        loss = penalty + constrain
+        loss = loss.mean()
         return loss
 
 

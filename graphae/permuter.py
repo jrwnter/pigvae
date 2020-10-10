@@ -20,4 +20,5 @@ class SinkhornNetwork(torch.nn.Module):
         x = x.reshape(shape[0], shape[1] * shape[2])
         x = self.fnn(x)
         x = x.view(shape[0], shape[1], shape[1])  # [batch_size, num_nodes, num_nodes]
+        x = torch.sigmoid(x)
         return x

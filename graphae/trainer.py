@@ -13,26 +13,10 @@ class PLGraphAE(pl.LightningModule):
         super().__init__()
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
-        self.critic = GraphReconstructionLoss()
-        self.sinkhorn_temp_decay = TempDecay(
-            start_temp=self.hparams["sinkhorn_temp"],
-            #target_metric_value=self.hparams["sinkhorn_decay_target_metric_value"],
-            target_metric_value=0.08,
-            factor=0.75,
-            cooldown=20,
-            patience=5
-        )
+        self.critic = Critic()
 
-    def forward(self, graph, sinkhorn_temp=None, sinkhorn_noise=None):
-        if sinkhorn_temp is None:
-            sinkhorn_temp = self.sinkhorn_temp_decay.temp
-        if sinkhorn_noise is None:
-            sinkhorn_noise = self.hparams["sinkhorn_noise_factor"]
-        node_logits, adj_logits, mask_logits, perms = self.graph_ae(
-            graph=graph,
-            sinkhorn_temp=sinkhorn_temp,
-            sinkhorn_noise=sinkhorn_noise,
-        )
+    def forward(self, graph):
+        node_logits, adj_logits, mask_logits, perms = self.graph_ae(graph=graph)
         return node_logits, adj_logits, mask_logits, perms
 
     def prepare_data(self):
@@ -67,19 +51,19 @@ class PLGraphAE(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.graph_ae.parameters())
-        """lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
             factor=0.5,
             patience=5,
-            cooldown=10,
+            cooldown=20,
             min_lr=1e-6,
         )
         scheduler = {
             'scheduler': lr_scheduler,
             'interval': 'step',
             'frequency': self.hparams["eval_freq"] + 1
-        }"""
-
+        }
+        """
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer=optimizer,
             step_size=1,
@@ -88,12 +72,12 @@ class PLGraphAE(pl.LightningModule):
         scheduler = {
             'scheduler': lr_scheduler,
         }
-
+        """
         return [optimizer], [scheduler]
 
     def training_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
-        nodes_pred, adj_pred, mask_pred, _ = self(sparse_graph)
+        nodes_pred, adj_pred, mask_pred, perm = self(sparse_graph)
         nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
         loss = self.critic(
             nodes_true=nodes_true,
@@ -101,13 +85,14 @@ class PLGraphAE(pl.LightningModule):
             mask_true=mask_true,
             nodes_pred=nodes_pred,
             adj_pred=adj_pred,
-            mask_pred=mask_pred
+            mask_pred=mask_pred,
+            perm=perm
         )
         return loss
 
     def validation_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
-        nodes_pred, adj_pred, mask_pred, perms = self(graph=sparse_graph)
+        nodes_pred, adj_pred, mask_pred, perm = self(graph=sparse_graph)
         nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
         loss = self.critic(
             nodes_true=nodes_true,
@@ -115,7 +100,8 @@ class PLGraphAE(pl.LightningModule):
             mask_true=mask_true,
             nodes_pred=nodes_pred,
             adj_pred=adj_pred,
-            mask_pred=mask_pred
+            mask_pred=mask_pred,
+            perm=perm
         )
         #nodes_pred_oh, adj_pred_oh = self.graph_ae.logits_to_one_hot(nodes_pred, adj_pred)
         element_type_acc, charge_type_acc, hybridization_type_acc = node_balanced_accuracy(
@@ -139,7 +125,7 @@ class PLGraphAE(pl.LightningModule):
             "hybridization_type_acc": hybridization_type_acc,
             "adj_acc": adj_acc,
             "mask_acc": mask_acc,
-            "mean_max_perm_value": perms.max(axis=1)[0].mean()
+            "mean_max_perm_value": perm.max(axis=1)[0].mean()
         }
         return output
 
@@ -148,8 +134,6 @@ class PLGraphAE(pl.LightningModule):
         for key in outputs[0].keys():
             out[key] = torch.stack([output[key] for output in outputs]).mean()
         tqdm_dict = {'val_loss': out["loss"]}
-        self.sinkhorn_temp_decay(out["loss"])
-        out["sinkhorn_temp"] = self.sinkhorn_temp_decay.temp
 
         return {'val_loss': out["loss"], 'log': out, "progress_bar": tqdm_dict}
 
