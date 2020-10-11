@@ -112,16 +112,29 @@ class GraphAE(torch.nn.Module):
         self.decoder = Decoder(hparams)
         self.permuter = Permuter(hparams)
 
-    def forward(self, graph, sinkhorn_temp, sinkhorn_noise):
+    def forward(self, graph, sinkhorn_temp, sinkhorn_noise, permute=True, postprocess_method=None):
         graph_emb, node_embs = self.encoder(graph)
         node_logits, adj_logits = self.decoder(graph_emb)
+        mask_logits, node_logits = node_logits[:, :, 0], node_logits[:, :, 1:]
+        if postprocess_method is not None:
+            node_logits, adj_logits = self.postprocess_logits(node_logits, adj_logits, method=postprocess_method)
         node_embs = node_embs_to_dense(node_embs, num_nodes=self.num_nodes, batch_idxs=graph.batch)
         perms = self.permuter(node_embs, sinkhorn_temp, sinkhorn_noise)
-        node_logits = torch.matmul(perms, node_logits)
-        shape = adj_logits.shape
-        adj_logits = torch.matmul(perms, adj_logits.view(shape[0], shape[1], shape[2] * shape[3])).view(shape)
-        mask_logits, node_logits = node_logits[:, :, 0], node_logits[:, :, 1:]
+        if permute:
+            node_logits = torch.matmul(perms, node_logits)
+            shape = adj_logits.shape
+            adj_logits = torch.matmul(perms, adj_logits.view(shape[0], shape[1], shape[2] * shape[3])).view(shape)
+            mask_logits = torch.matmul(perms, mask_logits.unsqueeze(-1)).squeeze()
         return node_logits, adj_logits, mask_logits, perms
+
+    @staticmethod
+    def postprocess_logits(node_logits, adj_logits, method='soft_gumbel'):
+        element_type = postprocess(node_logits[:, :, :11], method=method)
+        charge_type = postprocess(node_logits[:, :, 11:16], method=method)
+        hybridization_type = postprocess(node_logits[:, :, 16:], method=method)
+        nodes = torch.cat((element_type, charge_type, hybridization_type), dim=-1)
+        adj = postprocess(adj_logits, method=method)
+        return nodes, adj
 
     @staticmethod
     def logits_to_one_hot(nodes, adj):
@@ -158,5 +171,25 @@ def node_embs_to_dense(node_embs, num_nodes, batch_idxs):
         [batch_size, num_nodes, num_features],
         device=device).masked_scatter_(mask, node_embs)
     return node_embs_dense
+
+
+def postprocess(logits, method, temperature=5.):
+    shape = logits.shape
+    if method == 'soft_gumbel':
+        out = torch.nn.functional.gumbel_softmax(
+            logits=logits.view(-1, shape[-1]) / temperature,
+            hard=False
+        )
+    elif method == 'hard_gumbel':
+        out = torch.nn.functional.gumbel_softmax(
+            logits=logits.view(-1, shape[-1]) / temperature,
+            hard=True
+        )
+    else:
+        out = torch.nn.functional.softmax(
+            input=logits / temperature
+        )
+    return out.view(shape)
+
 
 

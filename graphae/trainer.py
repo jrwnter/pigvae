@@ -17,13 +17,13 @@ class PLGraphAE(pl.LightningModule):
         self.sinkhorn_temp_decay = TempDecay(
             start_temp=self.hparams["sinkhorn_temp"],
             #target_metric_value=self.hparams["sinkhorn_decay_target_metric_value"],
-            target_metric_value=0.08,
+            target_metric_value=0.02,
             factor=0.75,
             cooldown=20,
             patience=5
         )
 
-    def forward(self, graph, sinkhorn_temp=None, sinkhorn_noise=None):
+    def forward(self, graph, sinkhorn_temp=None, sinkhorn_noise=None, permute=True, postprocess_method=None):
         if sinkhorn_temp is None:
             sinkhorn_temp = self.sinkhorn_temp_decay.temp
         if sinkhorn_noise is None:
@@ -32,6 +32,8 @@ class PLGraphAE(pl.LightningModule):
             graph=graph,
             sinkhorn_temp=sinkhorn_temp,
             sinkhorn_noise=sinkhorn_noise,
+            permute=permute,
+            postprocess_method=postprocess_method
         )
         return node_logits, adj_logits, mask_logits, perms
 
@@ -82,7 +84,7 @@ class PLGraphAE(pl.LightningModule):
 
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer=optimizer,
-            step_size=1,
+            step_size=5,
             gamma=0.9,
         )
         scheduler = {
