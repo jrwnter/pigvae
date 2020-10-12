@@ -89,11 +89,11 @@ class Permuter(torch.nn.Module):
             non_linearity=hparams["nonlin"]
         )
 
-    def forward(self, node_embs):
+    def forward(self, node_embs, eps=10e-6):
         perm = self.permuter(node_embs)
         #perm = sinkhorn_ops.simple_sinkhorn(perm)
-        perm = perm / perm.sum(axis=1, keepdim=True)
-        perm = perm / perm.sum(axis=2, keepdim=True)
+        perm = perm / (perm.sum(axis=1, keepdim=True) + eps)
+        perm = perm / (perm.sum(axis=2, keepdim=True) + eps)
         return perm
 
 
@@ -166,7 +166,7 @@ def node_embs_to_dense(node_embs, num_nodes, batch_idxs):
     return node_embs_dense
 
 
-def postprocess(logits, method, temperature=5.):
+def postprocess(logits, method, temperature=1.):
     shape = logits.shape
     if method == 'soft_gumbel':
         out = torch.nn.functional.gumbel_softmax(

@@ -30,6 +30,7 @@ def add_arguments(parser):
     parser.add_argument("--lr_scheduler_factor", default=0.5, type=float)
     parser.add_argument("--lr_scheduler_patience", default=2, type=int)
     parser.add_argument("--lr_scheduler_cooldown", default=5, type=int)
+    parser.add_argument("--alpha", default=0.01, type=float)
     #parser.add_argument("--sinkhorn_decay_target_metric_value", default=0.1, type=float)
     parser.add_argument("--vae", dest='vae', action='store_true')
     parser.set_defaults(vae=False)

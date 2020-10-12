@@ -11,12 +11,14 @@ class PLGraphAE(pl.LightningModule):
 
     def __init__(self, hparams):
         super().__init__()
+        if not "alpha" in hparams:
+            hparams["alpha"] = 0.01
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
-        self.critic = Critic()
+        self.critic = Critic(alpha=hparams["alpha"])
 
     def forward(self, graph, permute=True, postprocess_method=None):
-        node_logits, adj_logits, mask_logits, perms = self.graph_ae(graph=graph)
+        node_logits, adj_logits, mask_logits, perms = self.graph_ae(graph=graph, postprocess_method=postprocess_method)
         return node_logits, adj_logits, mask_logits, perms
 
     def prepare_data(self):

@@ -15,16 +15,17 @@ MASK_POS_WEIGHT = torch.Tensor([0.3221])
 
 
 class Critic(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, alpha=0.01):
         super().__init__()
         self.reconstruction_loss = GraphReconstructionLoss()
         self.permutation_matrix_penalty = PermutaionMatrixPenalty()
+        self.alpha = alpha
 
     def forward(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, perm):
         recon_loss = self.reconstruction_loss(nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred)
         perm_loss = self.permutation_matrix_penalty(perm)
         loss = {**recon_loss, "perm_loss": perm_loss}
-        loss["loss"] += loss["perm_loss"]
+        loss["loss"] += self.alpha * loss["perm_loss"]
         return loss
 
 
