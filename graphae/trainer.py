@@ -15,7 +15,7 @@ class PLGraphAE(pl.LightningModule):
         self.graph_ae = GraphAE(hparams)
         self.critic = Critic()
 
-    def forward(self, graph):
+    def forward(self, graph, permute=True, postprocess_method=None):
         node_logits, adj_logits, mask_logits, perms = self.graph_ae(graph=graph)
         return node_logits, adj_logits, mask_logits, perms
 
@@ -66,7 +66,7 @@ class PLGraphAE(pl.LightningModule):
         """
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer=optimizer,
-            step_size=1,
+            step_size=5,
             gamma=0.9,
         )
         scheduler = {
