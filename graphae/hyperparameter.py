@@ -26,7 +26,7 @@ def add_arguments(parser):
 
     # TRAINING
     parser.add_argument("-b", "--batch_size", default=256, type=int)
-    parser.add_argument("--lr", default=0.0001, type=float)
+    parser.add_argument("--lr", default=0.001, type=float)
     parser.add_argument("--lr_scheduler_factor", default=0.5, type=float)
     parser.add_argument("--lr_scheduler_patience", default=2, type=int)
     parser.add_argument("--lr_scheduler_cooldown", default=5, type=int)
@@ -66,6 +66,9 @@ def add_arguments(parser):
 
     parser.add_argument("--node_decoder_hidden_dim", default=1024, type=int)
     parser.add_argument("--node_decoder_num_layers", default=3, type=int)
+
+    parser.add_argument("--postprocess_method", default=0, type=int)
+    parser.add_argument("--postprocess_temp", default=1.0, type=float)
 
     # PERMUTER
     parser.add_argument("--permuter_hidden_dim", default=512, type=int)

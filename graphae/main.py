@@ -38,9 +38,10 @@ def main(hparams):
         checkpoint_callback=checkpoint_callback,
         val_check_interval=hparams.eval_freq if not hparams.test else 1.0,
         distributed_backend=None if hparams.gpus == 1 else "dp",
-        gradient_clip_val=0.5,
+        gradient_clip_val=0.1,
         callbacks=[lr_logger],
-        profiler=True
+        profiler=True,
+        terminate_on_nan=True,
     )
     trainer.fit(model)
 

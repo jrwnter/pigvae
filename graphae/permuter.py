@@ -17,7 +17,7 @@ class SinkhornNetwork(torch.nn.Module):
     def forward(self, x):
         # x: node_embeddings [batch_size, num_nodes, node_dim]
         shape = x.shape
-        x = x.reshape(shape[0], shape[1] * shape[2])
+        x = x.reshape(shape[0], shape[1] * shape[2])  # TODO: why does view not work here?
         x = self.fnn(x)
         x = x.view(shape[0], shape[1], shape[1])  # [batch_size, num_nodes, num_nodes]
         x = torch.sigmoid(x)

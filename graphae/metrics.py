@@ -28,6 +28,48 @@ class Critic(torch.nn.Module):
         loss["loss"] += self.alpha * loss["perm_loss"]
         return loss
 
+    def evaluate(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, perm, prefix=None):
+        loss = self(
+            nodes_true=nodes_true,
+            adj_true=adj_true,
+            mask_true=mask_true,
+            nodes_pred=nodes_pred,
+            adj_pred=adj_pred,
+            mask_pred=mask_pred,
+            perm=perm
+        )
+        # nodes_pred_oh, adj_pred_oh = self.graph_ae.logits_to_one_hot(nodes_pred, adj_pred)
+        element_type_acc, charge_type_acc, hybridization_type_acc = node_balanced_accuracy(
+            nodes_pred=nodes_pred,
+            nodes_true=nodes_true,
+            mask=mask_true
+        )
+        adj_acc = adj_balanced_accuracy(
+            adj_pred=adj_pred,
+            adj_true=adj_true,
+            mask=mask_true
+        )
+        mask_acc = mask_balenced_accuracy(
+            mask_pred=mask_pred,
+            mask_true=mask_true
+        )
+        output = {
+            **loss,
+            "element_type_acc": element_type_acc,
+            "charge_type_acc": charge_type_acc,
+            "hybridization_type_acc": hybridization_type_acc,
+            "adj_acc": adj_acc,
+            "mask_acc": mask_acc,
+            "mean_max_perm_value": perm.max(axis=1)[0].mean()
+        }
+        if prefix is not None:
+            output2 = {}
+            for key in output.keys():
+                new_key = prefix + "_" + str(key)
+                output2[new_key] = output[key]
+            output = output2
+        return output
+
 
 class GraphReconstructionLoss(torch.nn.Module):
     def __init__(self):
@@ -87,7 +129,7 @@ class PermutaionMatrixPenalty(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-    def row_col_penalty(self, perm, axis):
+    """def row_col_penalty(self, perm, axis):
         # v: [batch_size, num_nodes, num_nodes]
         loss = torch.sum(torch.sum(torch.abs(perm), axis=axis) - torch.sqrt(torch.sum(torch.pow(perm, 2), axis=axis)), axis=1)
         return loss
@@ -103,6 +145,25 @@ class PermutaionMatrixPenalty(torch.nn.Module):
         constrain = constrain_col + constrain_row #+ constrain_pos
         loss = penalty + constrain
         loss = loss.mean()
+        return loss"""
+    @staticmethod
+    def entropy(p, axis, normalize=True, eps=10e-12):
+        if normalize:
+            p = p / (p.sum(axis=axis, keepdim=True) + eps)
+        e = - torch.sum(p * torch.clamp_min(torch.log(p), -100), axis=axis)
+        return e
+
+    def forward(self, perm):
+        batch_size = perm.size(0)
+        num_nodes = perm.size(1)
+        entropy_col = self.entropy(perm, axis=1)
+        entropy_row = self.entropy(perm, axis=2)
+        penalty = entropy_col.mean() + entropy_row.mean()
+        identity = torch.ones((batch_size, num_nodes)).type_as(perm)
+        constrain_col = torch.abs(torch.sum(perm, axis=1) - identity).mean()
+        constrain_row = torch.abs(torch.sum(perm, axis=2) - identity).mean()
+        constrain = constrain_col + constrain_row
+        loss = penalty + 10 * constrain
         return loss
 
 
@@ -134,7 +195,7 @@ def node_balanced_accuracy(nodes_pred, nodes_true, mask):
 
 def mask_balenced_accuracy(mask_pred, mask_true):
     mask_true = mask_true.float().flatten()
-    mask_pred = mask_pred.flatten() > 0.5
+    mask_pred = mask_pred.flatten() > 0
     mask_pred = mask_pred.long()
     acc = scipy_balanced_accuracy(mask_pred, mask_true)
     return acc
@@ -145,5 +206,3 @@ def adj_balanced_accuracy(adj_pred, adj_true, mask):
     adj_true, adj_pred = adj_true[adj_mask], adj_pred[adj_mask]
     acc = scipy_balanced_accuracy(adj_pred, adj_true)
     return acc
-
-

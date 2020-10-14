@@ -89,11 +89,13 @@ class Permuter(torch.nn.Module):
             non_linearity=hparams["nonlin"]
         )
 
-    def forward(self, node_embs, eps=10e-6):
+    def forward(self, node_embs, eps=10e-9):
         perm = self.permuter(node_embs)
         #perm = sinkhorn_ops.simple_sinkhorn(perm)
-        perm = perm / (perm.sum(axis=1, keepdim=True) + eps)
-        perm = perm / (perm.sum(axis=2, keepdim=True) + eps)
+        perm = perm / (perm.sum(axis=1, keepdim=True) + eps / 10000) + eps
+        perm = perm / (perm.sum(axis=2, keepdim=True) + eps / 10000) + eps
+        perm = perm / (perm.sum(axis=1, keepdim=True) + eps / 10000) + eps
+        perm = perm / (perm.sum(axis=2, keepdim=True) + eps / 10000) + eps
         return perm
 
 
@@ -105,26 +107,48 @@ class GraphAE(torch.nn.Module):
         self.decoder = Decoder(hparams)
         self.permuter = Permuter(hparams)
 
-    def forward(self, graph, permute=True, postprocess_method=None):
+    def forward(self, graph, permute=True, round_perm=False, postprocess_method=None, postprocess_temp=1.0):
         graph_emb, node_embs = self.encoder(graph)
         node_logits, adj_logits = self.decoder(graph_emb)
         mask_logits, node_logits = node_logits[:, :, 0], node_logits[:, :, 1:]
+        node_embs = node_embs_to_dense(
+            node_embs=node_embs,
+            num_nodes=self.num_nodes,
+            batch_idxs=graph.batch)
+        perm = self.permuter(node_embs)
         if postprocess_method is not None:
-            node_logits, adj_logits = self.postprocess_logits(node_logits, adj_logits, method=postprocess_method)
-        node_embs = node_embs_to_dense(node_embs, num_nodes=self.num_nodes, batch_idxs=graph.batch)
-        perms = self.permuter(node_embs)
+            node_logits, adj_logits = self.postprocess_logits(
+                node_logits=node_logits,
+                adj_logits=adj_logits,
+                method=postprocess_method,
+                temp=postprocess_temp
+            )
         if permute:
-            node_logits = torch.matmul(perms, node_logits)
-            shape = adj_logits.shape
-            adj_logits = torch.matmul(perms, adj_logits.view(shape[0], shape[1], shape[2] * shape[3])).view(shape)
-            mask_logits = torch.matmul(perms, mask_logits.unsqueeze(-1)).squeeze()
-        return node_logits, adj_logits, mask_logits, perms
+            node_logits, adj_logits, mask_logits = self.permute(
+                nodes=node_logits,
+                adj=adj_logits,
+                mask=mask_logits,
+                perm=perm,
+                round=round_perm)
+        return node_logits, adj_logits, mask_logits, perm
+
+    def permute(self, nodes, adj, mask, perm, round=False):
+        if round:
+            perm = torch.where(perm > 0.5, torch.ones_like(perm), torch.zeros_like(perm))
+        nodes = torch.matmul(perm, nodes)
+        shape = adj.shape
+        adj = torch.matmul(perm, adj.view(shape[0], shape[1], shape[2] * shape[3])).view(shape)
+        mask = torch.matmul(perm, mask.unsqueeze(-1)).squeeze()
+        return nodes, adj, mask
 
     @staticmethod
-    def postprocess_logits(node_logits, adj_logits, method='soft_gumbel'):
-        element_type = postprocess(node_logits[:, :, :11], method=method)
-        charge_type = postprocess(node_logits[:, :, 11:16], method=method)
-        hybridization_type = postprocess(node_logits[:, :, 16:], method=method)
+    def postprocess_logits(node_logits, adj_logits, method=None, temp=1.0):
+        element_type = node_logits[:, :, :11]
+        charge_type = node_logits[:, :, 11:16]
+        hybridization_type = node_logits[:, :, 16:]
+        element_type = postprocess(element_type, method=method, temperature=temp)
+        charge_type = postprocess(charge_type, method=method, temperature=temp)
+        hybridization_type = postprocess(hybridization_type, method=method, temperature=temp)
         nodes = torch.cat((element_type, charge_type, hybridization_type), dim=-1)
         adj = postprocess(adj_logits, method=method)
         return nodes, adj
@@ -167,22 +191,28 @@ def node_embs_to_dense(node_embs, num_nodes, batch_idxs):
 
 
 def postprocess(logits, method, temperature=1.):
-    shape = logits.shape
     if method == 'soft_gumbel':
         out = torch.nn.functional.gumbel_softmax(
-            logits=logits.view(-1, shape[-1]) / temperature,
-            hard=False
+            logits=logits,
+            hard=False,
+            tau=temperature,
+            dim=-1
         )
     elif method == 'hard_gumbel':
         out = torch.nn.functional.gumbel_softmax(
-            logits=logits.view(-1, shape[-1]) / temperature,
-            hard=True
+            logits=logits,
+            hard=True,
+            tau=temperature,
+            dim=-1
+        )
+    elif method == "softmax":
+        out = torch.nn.functional.softmax(
+            input=logits,
+            dim=-1
         )
     else:
-        out = torch.nn.functional.softmax(
-            input=logits / temperature
-        )
-    return out.view(shape)
+        raise NotImplementedError
+    return out
 
 
 

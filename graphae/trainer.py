@@ -11,14 +11,35 @@ class PLGraphAE(pl.LightningModule):
 
     def __init__(self, hparams):
         super().__init__()
-        if not "alpha" in hparams:
+        if "alpha" not in hparams:
             hparams["alpha"] = 0.01
+        if "postprocess_method" not in hparams:
+            hparams["postprocess_method"] = 0
+        if "postprocess_temp" not in hparams:
+            hparams["postprocess_temp"] = 1.0
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
         self.critic = Critic(alpha=hparams["alpha"])
 
-    def forward(self, graph, permute=True, postprocess_method=None):
-        node_logits, adj_logits, mask_logits, perms = self.graph_ae(graph=graph, postprocess_method=postprocess_method)
+    def forward(self, graph, permute=True, round_perm=False, postprocess_method=None):
+        if postprocess_method is None:
+            if self.hparams["postprocess_method"] == 0:
+                postprocess_method = None
+            elif self.hparams["postprocess_method"] == 1:
+                postprocess_method = "soft_gumbel"
+            elif self.hparams["postprocess_method"] == 2:
+                postprocess_method = "hard_gumbel"
+            elif self.hparams["postprocess_method"] == 3:
+                postprocess_method = "softmax"
+            else:
+                raise NotImplementedError
+        node_logits, adj_logits, mask_logits, perms = self.graph_ae(
+            graph=graph,
+            permute=permute,
+            round_perm=round_perm,
+            postprocess_method=postprocess_method,
+            postprocess_temp=self.hparams["postprocess_temp"]
+        )
         return node_logits, adj_logits, mask_logits, perms
 
     def prepare_data(self):
@@ -52,7 +73,7 @@ class PLGraphAE(pl.LightningModule):
         )
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.graph_ae.parameters())
+        optimizer = torch.optim.Adam(self.graph_ae.parameters(), lr=self.hparams["lr"])
         lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
             factor=0.5,
@@ -94,42 +115,35 @@ class PLGraphAE(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
-        nodes_pred, adj_pred, mask_pred, perm = self(graph=sparse_graph)
         nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
-        loss = self.critic(
-            nodes_true=nodes_true,
-            adj_true=adj_true,
-            mask_true=mask_true,
-            nodes_pred=nodes_pred,
-            adj_pred=adj_pred,
-            mask_pred=mask_pred,
-            perm=perm
+        nodes_pred, adj_pred, mask_pred, perm = self(
+            graph=sparse_graph,
+            permute=False,
+            postprocess_method=None
         )
-        #nodes_pred_oh, adj_pred_oh = self.graph_ae.logits_to_one_hot(nodes_pred, adj_pred)
-        element_type_acc, charge_type_acc, hybridization_type_acc = node_balanced_accuracy(
-            nodes_pred=nodes_pred,
-            nodes_true=nodes_true,
-            mask=mask_true
+        nodes_pred_, adj_pred_, mask_pred_ = self.graph_ae.permute(
+            nodes=nodes_pred,
+            adj=adj_pred,
+            mask=mask_pred,
+            perm=perm,
+            round=False
         )
-        adj_acc = adj_balanced_accuracy(
-            adj_pred=adj_pred,
-            adj_true=adj_true,
-            mask=mask_true
+        metrics_soft = self.critic.evaluate(nodes_true, adj_true, mask_true, nodes_pred_, adj_pred_, mask_pred_, perm)
+        nodes_pred, adj_pred = self.graph_ae.postprocess_logits(
+            node_logits=nodes_pred,
+            adj_logits=adj_pred,
+            method="softmax"
         )
-        mask_acc = mask_balenced_accuracy(
-            mask_pred=mask_pred,
-            mask_true=mask_true
+        nodes_pred, adj_pred, mask_pred = self.graph_ae.permute(
+            nodes=nodes_pred,
+            adj=adj_pred,
+            mask=mask_pred,
+            perm=perm,
+            round=True
         )
-        output = {
-            **loss,
-            "element_type_acc": element_type_acc,
-            "charge_type_acc": charge_type_acc,
-            "hybridization_type_acc": hybridization_type_acc,
-            "adj_acc": adj_acc,
-            "mask_acc": mask_acc,
-            "mean_max_perm_value": perm.max(axis=1)[0].mean()
-        }
-        return output
+        metrics_hard = self.critic.evaluate(nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, perm, "hard")
+        metrics = {**metrics_soft, **metrics_hard}
+        return metrics
 
     def validation_epoch_end(self, outputs):
         out = {}
