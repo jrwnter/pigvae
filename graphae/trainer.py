@@ -121,7 +121,7 @@ class PLGraphAE(pl.LightningModule):
             permute=False,
             postprocess_method=None
         )
-        nodes_pred_, adj_pred_, mask_pred_ = self.graph_ae.permute(
+        nodes_pred_, adj_pred_, mask_pred_, perm_ = self.graph_ae.permute(
             nodes=nodes_pred,
             adj=adj_pred,
             mask=mask_pred,
@@ -134,7 +134,7 @@ class PLGraphAE(pl.LightningModule):
             adj_logits=adj_pred,
             method="softmax"
         )
-        nodes_pred, adj_pred, mask_pred = self.graph_ae.permute(
+        nodes_pred, adj_pred, mask_pred, perm_ = self.graph_ae.permute(
             nodes=nodes_pred,
             adj=adj_pred,
             mask=mask_pred,

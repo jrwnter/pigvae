@@ -4,14 +4,26 @@ from sklearn.metrics import balanced_accuracy_score
 from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss, L1Loss
 
 
-ELEMENT_TYPE_WEIGHTS = torch.Tensor(
-    [1.1331e-04, 7.1108e-04, 8.0928e-04, 4.9133e-03, 5.2829e-03, 2.5689e-01,
-     2.7862e-01, 8.5392e-03, 1.9235e-02, 1.4627e-01, 2.7862e-01])
-CHARGE_TYPE_WEIGHTS = torch.Tensor([0.2605, 0.2605, 0.2180, 0.2605, 0.0006])
+# 32
+"""ELEMENT_TYPE_WEIGHTS = torch.Tensor(
+    1.1111e-04, 6.9739e-04, 7.9399e-04, 4.8409e-03, 5.1567e-03, 2.6155e-01,
+    2.7761e-01, 8.4134e-03, 1.8924e-02, 1.4429e-01, 2.7761e-01])
+CHARGE_TYPE_WEIGHTS = torch.Tensor([0.2596, 0.2596, 0.2205, 0.2596, 0.0006])
 HYBRIDIZATION_TYPE_WEIGHT = torch.Tensor(
-    [2.4990e-01, 3.8090e-04, 3.9730e-06, 6.6788e-06, 2.4990e-01, 2.4990e-01, 2.4990e-01])
-EDGE_WEIGHTS = torch.Tensor([5.3680e-03, 4.4790e-02, 9.4289e-01, 6.8177e-03, 1.3267e-04])
+    [2.4989e-01, 4.4300e-04, 4.6720e-06, 7.8765e-06, 2.4989e-01, 2.4989e-01, 2.4989e-01])
+EDGE_WEIGHTS = torch.Tensor([5.4339e-03, 4.5212e-02, 9.4218e-01, 6.8846e-03, 2.8955e-04])
 MASK_POS_WEIGHT = torch.Tensor([0.3221])
+"""
+# 16
+
+ELEMENT_TYPE_WEIGHTS = torch.Tensor(
+    [0.0003, 0.0017, 0.0021, 0.0103, 0.0120, 0.2837, 0.2500, 0.0170, 0.0247,
+     0.1144, 0.2837])
+CHARGE_TYPE_WEIGHTS = torch.Tensor([0.2594, 0.2594, 0.2211, 0.2594, 0.0006])
+HYBRIDIZATION_TYPE_WEIGHT = torch.Tensor(
+    [3.3249e-01, 5.4122e-06, 1.4856e-07, 1.5068e-07, 2.5381e-03, 3.3249e-01, 3.3249e-01])
+EDGE_WEIGHTS = torch.Tensor([0.0091, 0.0891, 0.8833, 0.0175, 0.0009])
+MASK_POS_WEIGHT = torch.Tensor([0.1214])
 
 
 class Critic(torch.nn.Module):

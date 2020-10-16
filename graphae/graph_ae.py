@@ -125,7 +125,7 @@ class GraphAE(torch.nn.Module):
                 temp=postprocess_temp
             )
         if permute:
-            node_logits, adj_logits, mask_logits = self.permute(
+            node_logits, adj_logits, mask_logits, perm = self.permute(
                 nodes=node_logits,
                 adj=adj_logits,
                 mask=mask_logits,
@@ -135,12 +135,12 @@ class GraphAE(torch.nn.Module):
 
     def permute(self, nodes, adj, mask, perm, round=False):
         if round:
-            perm = torch.where(perm > 0.5, torch.ones_like(perm), torch.zeros_like(perm))
+            perm = torch.where(perm == perm.max(axis=2)[0].unsqueeze(2), torch.ones_like(perm), torch.zeros_like(perm))
         nodes = torch.matmul(perm, nodes)
         shape = adj.shape
         adj = torch.matmul(perm, adj.view(shape[0], shape[1], shape[2] * shape[3])).view(shape)
         mask = torch.matmul(perm, mask.unsqueeze(-1)).squeeze()
-        return nodes, adj, mask
+        return nodes, adj, mask, perm
 
     @staticmethod
     def postprocess_logits(node_logits, adj_logits, method=None, temp=1.0):
