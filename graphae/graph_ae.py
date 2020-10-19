@@ -92,11 +92,11 @@ class Permuter(torch.nn.Module):
     def forward(self, node_embs, eps=10e-9):
         perm = self.permuter(node_embs)
         #perm = sinkhorn_ops.simple_sinkhorn(perm)
-        """perm = perm / (perm.sum(axis=1, keepdim=True) + eps / 10000) + eps
-        perm = perm / (perm.sum(axis=2, keepdim=True) + eps / 10000) + eps
         perm = perm / (perm.sum(axis=1, keepdim=True) + eps / 10000) + eps
-        perm = perm / (perm.sum(axis=2, keepdim=True) + eps / 10000) + eps"""
-        perm = perm + eps
+        perm = perm / (perm.sum(axis=2, keepdim=True) + eps / 10000) + eps
+        #perm = perm / (perm.sum(axis=1, keepdim=True) + eps / 10000) + eps
+        #perm = perm / (perm.sum(axis=2, keepdim=True) + eps / 10000) + eps
+        #perm = perm + eps
         return perm
 
 

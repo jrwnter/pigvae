@@ -33,14 +33,17 @@ class Critic(torch.nn.Module):
         self.permutation_matrix_penalty = PermutaionMatrixPenalty()
         self.alpha = alpha
 
-    def forward(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, perm):
+    def forward(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, perm, alpha=None):
         recon_loss = self.reconstruction_loss(nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred)
         perm_loss = self.permutation_matrix_penalty(perm)
         loss = {**recon_loss, "perm_loss": perm_loss}
-        loss["loss"] += self.alpha * loss["perm_loss"]
+        if alpha is None:
+            loss["loss"] += self.alpha * loss["perm_loss"]
+        else:
+            loss["loss"] += alpha * loss["perm_loss"]
         return loss
 
-    def evaluate(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, perm, prefix=None):
+    def evaluate(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, perm, alpha, prefix=None):
         loss = self(
             nodes_true=nodes_true,
             adj_true=adj_true,
@@ -48,7 +51,8 @@ class Critic(torch.nn.Module):
             nodes_pred=nodes_pred,
             adj_pred=adj_pred,
             mask_pred=mask_pred,
-            perm=perm
+            perm=perm,
+            alpha=alpha
         )
         # nodes_pred_oh, adj_pred_oh = self.graph_ae.logits_to_one_hot(nodes_pred, adj_pred)
         element_type_acc, charge_type_acc, hybridization_type_acc = node_balanced_accuracy(
@@ -176,7 +180,7 @@ class PermutaionMatrixPenalty(torch.nn.Module):
         constrain_row = torch.abs(torch.sum(perm, axis=2) - identity).mean()
         constrain = constrain_col + constrain_row
         #loss = penalty + 10 * constrain
-        loss = penalty + constrain
+        loss = penalty + 5 * constrain
         return loss
 
 

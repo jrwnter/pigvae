@@ -20,6 +20,7 @@ class PLGraphAE(pl.LightningModule):
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
         self.critic = Critic(alpha=hparams["alpha"])
+        self.alpha_decay = AlphaDecay(0.001, 0.99, 2, cooldown=20, patience=5)
 
     def forward(self, graph, permute=True, round_perm=False, postprocess_method=None):
         if postprocess_method is None:
@@ -74,7 +75,7 @@ class PLGraphAE(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.graph_ae.parameters(), lr=self.hparams["lr"])
-        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        """lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
             factor=0.5,
             patience=5,
@@ -85,17 +86,15 @@ class PLGraphAE(pl.LightningModule):
             'scheduler': lr_scheduler,
             'interval': 'step',
             'frequency': self.hparams["eval_freq"] + 1
-        }
-        """
+        }"""
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer=optimizer,
             step_size=5,
-            gamma=0.9,
+            gamma=0.5,
         )
         scheduler = {
             'scheduler': lr_scheduler,
         }
-        """
         return [optimizer], [scheduler]
 
     def training_step(self, batch, batch_idx):
@@ -109,7 +108,8 @@ class PLGraphAE(pl.LightningModule):
             nodes_pred=nodes_pred,
             adj_pred=adj_pred,
             mask_pred=mask_pred,
-            perm=perm
+            perm=perm,
+            alpha=self.alpha_decay.alpha
         )
         return loss
 
@@ -128,7 +128,7 @@ class PLGraphAE(pl.LightningModule):
             perm=perm,
             round=False
         )
-        metrics_soft = self.critic.evaluate(nodes_true, adj_true, mask_true, nodes_pred_, adj_pred_, mask_pred_, perm)
+        metrics_soft = self.critic.evaluate(nodes_true, adj_true, mask_true, nodes_pred_, adj_pred_, mask_pred_, perm, self.alpha_decay.alpha)
         nodes_pred, adj_pred = self.graph_ae.postprocess_logits(
             node_logits=nodes_pred,
             adj_logits=adj_pred,
@@ -141,7 +141,7 @@ class PLGraphAE(pl.LightningModule):
             perm=perm,
             round=True
         )
-        metrics_hard = self.critic.evaluate(nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, perm, "hard")
+        metrics_hard = self.critic.evaluate(nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, perm, self.alpha_decay.alpha, "hard")
         metrics = {**metrics_soft, **metrics_hard}
         return metrics
 
@@ -151,13 +151,15 @@ class PLGraphAE(pl.LightningModule):
             out[key] = torch.stack([output[key] for output in outputs]).mean()
         tqdm_dict = {'val_loss': out["loss"]}
 
+        #self.alpha_decay(out["adj_acc"])
+        out["alpha"] = self.alpha_decay.alpha
+
         return {'val_loss': out["loss"], 'log': out, "progress_bar": tqdm_dict}
 
 
-
-class TempDecay(object):
-    def __init__(self, start_temp, target_metric_value, factor, cooldown=0, patience=0):
-        self.temp = start_temp
+class AlphaDecay(object):
+    def __init__(self, start_alpha, target_metric_value, factor, cooldown=0, patience=0):
+        self.alpha = start_alpha
         self.factor = factor
         self.cooldown = cooldown
         self.patience = patience
@@ -167,11 +169,11 @@ class TempDecay(object):
 
     def __call__(self, metric):
         self.steps_sice_decay += 1
-        if metric <= self.target_metric_value:
+        if metric >= self.target_metric_value:
             self.num_steps_below += 1
             if self.steps_sice_decay >= self.cooldown:
                 if self.num_steps_below >= self.patience:
-                    self.temp *= self.factor
+                    self.alpha *= self.factor
                     self.steps_sice_decay = 0
         else:
             self.num_steps_below = 0
