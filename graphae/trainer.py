@@ -20,7 +20,7 @@ class PLGraphAE(pl.LightningModule):
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
         self.critic = Critic(alpha=hparams["alpha"])
-        self.alpha_decay = AlphaDecay(0.001, 0.99, 2, cooldown=20, patience=5)
+        self.alpha_decay = AlphaDecay(hparams["alpha"], 0.99, 2, cooldown=20, patience=5)
 
     def forward(self, graph, permute=True, round_perm=False, postprocess_method=None):
         if postprocess_method is None:

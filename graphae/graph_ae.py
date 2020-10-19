@@ -42,26 +42,28 @@ class Encoder(torch.nn.Module):
 class Decoder(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
-        self.fnn = FNN(
-            input_dim=hparams["graph_emb_dim"],
+        self.meta_node_predictor = decoder.MetaNodeRNN(
+            emb_dim=hparams["graph_emb_dim"],
+            meta_node_dim=hparams["meta_node_dim"],
             hidden_dim=hparams["meta_node_decoder_hidden_dim"],
-            output_dim=hparams["meta_node_decoder_hidden_dim"],
+            num_nodes=hparams["max_num_nodes"],
             num_layers=hparams["meta_node_decoder_num_layers"],
-            non_linearity=hparams["nonlin"],
+            non_lin=hparams["nonlin"],
             batch_norm=hparams["batch_norm"],
         )
-        self.edge_predictor = decoder.EdgePredictor(
-            num_nodes=hparams["max_num_nodes"],
-            input_dim=hparams["meta_node_decoder_hidden_dim"],
+        self.edge_predictor = decoder.EdgeRNN(
+            input_dim=hparams["meta_node_dim"],
             hidden_dim=hparams["edge_predictor_hidden_dim"],
-            num_layers=hparams["edge_predictor_num_layers"],
+            num_nodes=hparams["max_num_nodes"],
+            num_layers_rnn=hparams["edge_predictor_num_layers_rnn"],
+            num_layers_fnn=hparams["edge_predictor_num_layers_fnn"],
+            h_0_dim=hparams["meta_node_decoder_hidden_dim"],
             num_edge_features=hparams["num_edge_features"],
+            non_lin=hparams["nonlin"],
             batch_norm=hparams["batch_norm"],
-            non_lin=hparams["nonlin"]
         )
         self.node_predictor = decoder.NodePredictor(
-            num_nodes=hparams["max_num_nodes"],
-            input_dim=hparams["meta_node_decoder_hidden_dim"],
+            meta_node_dim=hparams["meta_node_dim"],
             hidden_dim=hparams["node_decoder_hidden_dim"],
             num_layers=hparams["node_decoder_num_layers"],
             batch_norm=hparams["batch_norm"],
@@ -70,9 +72,9 @@ class Decoder(torch.nn.Module):
         )
 
     def forward(self, graph_emb):
-        x = self.fnn(graph_emb)
-        node_logits = self.node_predictor(x)
-        adj_logits = self.edge_predictor(x)
+        meta_node_embs, hx = self.meta_node_predictor(graph_emb)
+        node_logits = self.node_predictor(meta_node_embs)
+        adj_logits = self.edge_predictor(meta_node_embs, hx)
         return node_logits, adj_logits
 
 
