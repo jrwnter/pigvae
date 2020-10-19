@@ -51,4 +51,5 @@ CUDA_VISIBLE_DEVICES=7 python graphae/main.py -i 78 -g 1 -b 512 --graph_emb_dim 
 
 # no alpha decay. bigger edge decoder
 CUDA_VISIBLE_DEVICES=13 python graphae/main.py -i 79 -g 1 -b 512 --graph_emb_dim 1024 --max_num_nodes 16 --batch_norm --alpha 0.0025 --lr 0.0001 --permuter_num_layers 5 --permuter_hidden_dim 1024 --edge_predictor_num_layers 5 --graph_encoder_hidden_dim_gnn 2048 --graph_encoder_hidden_dim_fnn 2048 --meta_node_decoder_hidden_dim 2048 --graph_encoder_num_layers_gnn 9 --node_dim 1024 --graph_encoder_num_layers_fnn 6 --edge_predictor_hidden_dim 4096 &
+CUDA_VISIBLE_DEVICES=1 python graphae/main.py -i 81 -g 1 -b 64 --graph_emb_dim 1024 --max_num_nodes 16 --batch_norm --alpha 0.2 --lr 0.0001 --permuter_num_layers 5 --permuter_hidden_dim 1024 --edge_predictor_num_layers 5 --graph_encoder_hidden_dim_gnn 2048 --graph_encoder_hidden_dim_fnn 2048 --meta_node_decoder_hidden_dim 2048 --graph_encoder_num_layers_gnn 9 --node_dim 1024 --graph_encoder_num_layers_fnn 6 --edge_predictor_hidden_dim 4096 &
 
