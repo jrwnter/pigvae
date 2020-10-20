@@ -25,6 +25,7 @@ class MolecularGraphDatasetFromSmiles(Dataset):
 
     def __getitem__(self, idx):
         smiles = self.smiles[idx]
+        smiles = Chem.MolToSmiles(Chem.MolFromSmiles(smiles), doRandom=True)
         sparse_graph = MolecularGraph.from_smiles(smiles)
         dense_graph = self.dense_transform(sparse_graph.clone())
         dense_graph.x = dense_graph.x.unsqueeze(0)
