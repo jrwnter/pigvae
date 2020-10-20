@@ -37,7 +37,7 @@ class MetaNodeRNN(torch.nn.Module):
 
 
 # TODO: implemet some kind of attention(each RNN step takes all node emb in again?) nested RNN?
-"""class EdgeRNN(torch.nn.Module):
+class EdgeRNN(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, num_nodes, num_layers_rnn, num_layers_fnn, h_0_dim, num_edge_features, non_lin, batch_norm):
         super().__init__()
         self.num_nodes = num_nodes
@@ -75,9 +75,9 @@ class MetaNodeRNN(torch.nn.Module):
         x = x.transpose(1, 0)  # back to batch first [batch_size, num_nodes, num_nodes * num_edge_features]
         x = x.reshape(-1, self.num_nodes, self.num_nodes, self.num_edge_features)
         x = (x + x.permute(0, 2, 1, 3)) / 2
-        return x"""
+        return x
 
-
+"""
 class EdgeRNN(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, num_nodes, num_layers_rnn, num_layers_fnn, h_0_dim, num_edge_features, non_lin, batch_norm):
         super().__init__()
@@ -123,7 +123,7 @@ class EdgeRNN(torch.nn.Module):
         x = x.transpose(1, 0)  # back to batch first [batch_size, num_nodes, num_nodes * num_edge_features]
         x = x.reshape(-1, self.num_nodes, self.num_nodes, self.num_edge_features)
         x = (x + x.permute(0, 2, 1, 3)) / 2
-        return x
+        return x"""
 
 class NodePredictor(torch.nn.Module):
     def __init__(self, meta_node_dim, hidden_dim, num_layers, batch_norm=False, num_node_features=24, non_lin="lrelu"):
