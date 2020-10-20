@@ -42,28 +42,28 @@ class Encoder(torch.nn.Module):
 class Decoder(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
-        self.meta_node_predictor = decoder.MetaNodeRNN(
+        self.node_emb_predictor = decoder.NodeEmbDecoder(
             emb_dim=hparams["graph_emb_dim"],
-            meta_node_dim=hparams["meta_node_dim"],
+            node_dim=hparams["meta_node_dim"],
             hidden_dim=hparams["meta_node_decoder_hidden_dim"],
             num_nodes=hparams["max_num_nodes"],
-            num_layers=hparams["meta_node_decoder_num_layers"],
+            num_layers_fnn=hparams["meta_node_decoder_num_layers_fnn"],
+            num_layers_rnn=hparams["meta_node_decoder_num_layers_rnn"],
             non_lin=hparams["nonlin"],
             batch_norm=hparams["batch_norm"],
         )
-        self.edge_predictor = decoder.EdgeRNN(
-            input_dim=hparams["meta_node_dim"],
+        self.edge_predictor = decoder.EdgeDecoder(
+            emb_dim=hparams["graph_emb_dim"],
+            node_dim=hparams["meta_node_dim"],
             hidden_dim=hparams["edge_predictor_hidden_dim"],
             num_nodes=hparams["max_num_nodes"],
-            num_layers_rnn=hparams["edge_predictor_num_layers_rnn"],
-            num_layers_fnn=hparams["edge_predictor_num_layers_fnn"],
-            h_0_dim=hparams["meta_node_decoder_hidden_dim"],
+            num_layers=hparams["edge_predictor_num_layers"],
             num_edge_features=hparams["num_edge_features"],
             non_lin=hparams["nonlin"],
             batch_norm=hparams["batch_norm"],
         )
         self.node_predictor = decoder.NodePredictor(
-            meta_node_dim=hparams["meta_node_dim"],
+            node_dim=hparams["meta_node_dim"],
             hidden_dim=hparams["node_decoder_hidden_dim"],
             num_layers=hparams["node_decoder_num_layers"],
             batch_norm=hparams["batch_norm"],
@@ -72,17 +72,17 @@ class Decoder(torch.nn.Module):
         )
 
     def forward(self, graph_emb):
-        meta_node_embs, hx = self.meta_node_predictor(graph_emb)
-        node_logits = self.node_predictor(meta_node_embs)
-        adj_logits = self.edge_predictor(meta_node_embs, hx)
-        return node_logits, adj_logits
+        node_embs = self.node_emb_predictor(graph_emb)
+        node_logits = self.node_predictor(node_embs)
+        adj_logits = self.edge_predictor(graph_emb, node_embs)
+        return node_logits, adj_logits, node_embs
 
 
 class Permuter(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
         self.hparams = hparams
-        self.permuter = permuter.SinkhornNetwork(
+        self.permuter = permuter.Permuter(
             input_dim=hparams["node_dim"],
             hidden_dim=hparams["permuter_hidden_dim"],
             num_layers=hparams["permuter_num_layers"],
@@ -91,8 +91,8 @@ class Permuter(torch.nn.Module):
             non_linearity=hparams["nonlin"]
         )
 
-    def forward(self, node_embs, eps=10e-9):
-        perm = self.permuter(node_embs)
+    def forward(self, node_embs_in, node_embs_out, eps=10e-9):
+        perm = self.permuter(node_embs_in, node_embs_out)
         #perm = sinkhorn_ops.simple_sinkhorn(perm)
         perm = perm / (perm.sum(axis=1, keepdim=True) + eps / 10000) + eps
         perm = perm / (perm.sum(axis=2, keepdim=True) + eps / 10000) + eps
@@ -112,13 +112,13 @@ class GraphAE(torch.nn.Module):
 
     def forward(self, graph, permute=True, round_perm=False, postprocess_method=None, postprocess_temp=1.0):
         graph_emb, node_embs = self.encoder(graph)
-        node_logits, adj_logits = self.decoder(graph_emb)
+        node_logits, adj_logits, node_embs_ = self.decoder(graph_emb)
         mask_logits, node_logits = node_logits[:, :, 0], node_logits[:, :, 1:]
         node_embs = node_embs_to_dense(
             node_embs=node_embs,
             num_nodes=self.num_nodes,
             batch_idxs=graph.batch)
-        perm = self.permuter(node_embs)
+        perm = self.permuter(node_embs, node_embs_)
         if postprocess_method is not None:
             node_logits, adj_logits = self.postprocess_logits(
                 node_logits=node_logits,
