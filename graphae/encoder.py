@@ -1,6 +1,6 @@
 import torch
 from torch.nn import Linear, ELU, Sequential
-from torch_geometric.nn import GINConv, NNConv, global_add_pool
+from torch_geometric.nn import GINConv, NNConv, Set2Set
 from torch_scatter import scatter_add
 from graphae.fully_connected import FNN
 
@@ -33,7 +33,6 @@ class GraphConv(torch.nn.Module):
             num_layers=num_mlp_layers,
             non_linearity=non_linearity,
             batch_norm=batch_norm,
-            flatten_for_batch_norm=True,
             dropout=dropout
         )
         self.gnn = GINConv(
@@ -57,8 +56,7 @@ class GraphEncoder(torch.nn.Module):
         self.num_nodes = num_nodes
         self.batch_norm = batch_norm
         conv_layers = [EdgeNNConv(input_dim, node_dim, num_edge_features)]
-        conv_layers += [GraphConv(node_dim, node_dim, hidden_dim, 3, batch_norm, non_linearity) for _ in range(num_layers - 2)]
-        conv_layers += [GraphConv(node_dim, node_dim, hidden_dim, 3, batch_norm, non_linearity)]
+        conv_layers += [GraphConv(node_dim, node_dim, hidden_dim, 3, batch_norm, non_linearity) for _ in range(num_layers - 1)]
         self.conv_layers = torch.nn.ModuleList(conv_layers)
 
         if non_linearity == "relu":
@@ -83,20 +81,33 @@ class GraphEncoder(torch.nn.Module):
 
 
 class NodeAggregator(torch.nn.Module):
-    def __init__(self, input_dim, emb_dim, hidden_dim, num_layers, batch_norm=False, non_linearity="elu"):
+    def __init__(self, input_dim, emb_dim, hidden_dim, num_layers, batch_norm=False, non_linearity="elu", p_steps=5):
         super().__init__()
         self.fnn = FNN(
             input_dim=input_dim,
             hidden_dim=hidden_dim,
-            output_dim=emb_dim,
+            output_dim=hidden_dim,
             num_layers=num_layers,
             non_linearity=non_linearity,
             batch_norm=batch_norm
+        )
+        self.set2vec = Set2Set(
+            in_channels=hidden_dim,
+            processing_steps=p_steps,
+            num_layers=3
+        )
+        self.linear = Linear(
+            in_features=2*hidden_dim,
+            out_features=emb_dim
         )
 
     def forward(self, x, batch_idxs):
         # Aggreaate node embeddings for each node to one embedding for whole graph. Flatten takes care of
         # potential stacked node embs.
-        x = global_add_pool(x, batch_idxs).flatten(start_dim=1)
+        # x [batch_size * num_nodes, num_layers, node_dim]
+        # TODO: dont stack in step before, but cat --> higher hiddensize...
+        x = x.flatten(start_dim=1)
         x = self.fnn(x)
+        x = self.set2vec(x, batch_idxs)
+        x = self.linear(x)
         return x

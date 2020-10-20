@@ -16,8 +16,8 @@ class Encoder(torch.nn.Module):
             num_nodes=hparams["max_num_nodes"],
             num_edge_features=hparams["num_edge_features"],
             num_layers=hparams["graph_encoder_num_layers_gnn"],
-            #batch_norm=hparams["batch_norm"],
-            batch_norm=False,
+            batch_norm=hparams["batch_norm"],
+            #batch_norm=False,
             non_linearity=hparams["nonlin"],
             stack_node_emb=hparams["stack_node_emb"]
         )
