@@ -56,7 +56,7 @@ class NodeEmbDecoder(torch.nn.Module):
             idxs.append(idx)
             x_ = node_emb_encoded[torch.arange(batch_size), idx]
             node_emb_encoded_[torch.arange(batch_size), idx] = inf
-            if teacher_forcing:
+            if torch.rand(1) < teacher_forcing:
                 decoder_input = x_
             else:
                 decoder_input = x
@@ -87,8 +87,7 @@ class EdgeDecoder(torch.nn.Module):
         )
 
     def forward(self, nodes):
-        # emb [batch_size, emb_dim]
-        # nodes [batch_size, num_nodes, input_dim/node_dim]
+        # nodes [batch_size, num_nodes, node_dim]
         batch_size = nodes.size(0)
         x = nodes.flatten(start_dim=1)
         x = self.fnn(x)
