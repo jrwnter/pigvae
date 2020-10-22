@@ -83,7 +83,7 @@ class GraphAE(torch.nn.Module):
         self.encoder = Encoder(hparams)
         self.decoder = Decoder(hparams)
 
-    def forward(self, graph, teacher_forcing, postprocess_method=None, postprocess_temp=1.0):
+    def forward(self, graph, teacher_forcing=0.0, postprocess_method=None, postprocess_temp=1.0):
         graph_emb, node_emb_enc = self.encoder(graph=graph)
         node_emb_enc = node_embs_to_dense(
             node_embs=node_emb_enc,

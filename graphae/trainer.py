@@ -20,6 +20,7 @@ class PLGraphAE(pl.LightningModule):
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
         self.critic = Critic(alpha=hparams["alpha"])
+        self.tf_scheduler = TeacherForcingScheduler(start_value=1.0, factor=0.8)
 
     def forward(self, graph, teacher_forcing, postprocess_method=None):
         if postprocess_method is None:
@@ -41,7 +42,7 @@ class PLGraphAE(pl.LightningModule):
         )
         return node_logits, adj_logits, mask_logits, node_emb_enc, node_emb_dec
 
-    def prepare_data(self):
+    def setup(self, stage: str):
         num_smiles = 1000000 if self.hparams["test"] else None
         smiles_df = pd.read_csv("smiles_{}_atoms.csv".format(self.hparams["max_num_nodes"]), nrows=num_smiles)
         self.train_dataset = MolecularGraphDatasetFromSmiles(
@@ -73,7 +74,7 @@ class PLGraphAE(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.graph_ae.parameters(), lr=self.hparams["lr"])
-        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        """lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
             factor=0.5,
             patience=10,
@@ -84,21 +85,21 @@ class PLGraphAE(pl.LightningModule):
             'scheduler': lr_scheduler,
             'interval': 'step',
             'frequency': self.hparams["eval_freq"] + 1
-        }
-        """
+        }"""
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer=optimizer,
-            step_size=5,
-            gamma=0.5,
+            step_size=1,
+            gamma=0.8,
         )
         scheduler = {
             'scheduler': lr_scheduler,
-        }"""
+        }
         return [optimizer], [scheduler]
 
     def training_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
-        nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(sparse_graph, teacher_forcing=True)
+        tf_prop = self.tf_scheduler.tf_prop
+        nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(sparse_graph, teacher_forcing=tf_prop)
         nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
         loss = self.critic(
             nodes_true=nodes_true,
@@ -111,6 +112,14 @@ class PLGraphAE(pl.LightningModule):
             node_emb_dec=node_emb_dec,
         )
         return loss
+
+    def configure_ddp(self, model, device_ids):
+        model = MyDistributedDataParallel(
+            model,
+            device_ids=device_ids,
+            find_unused_parameters=True
+        )
+        return model
 
     def validation_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
@@ -132,7 +141,7 @@ class PLGraphAE(pl.LightningModule):
         )
         nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(
             graph=sparse_graph,
-            teacher_forcing=False,
+            teacher_forcing=0.0,
             postprocess_method=None
         )
 
@@ -158,27 +167,21 @@ class PLGraphAE(pl.LightningModule):
 
         return {'val_loss': out["loss"], 'log': out, "progress_bar": tqdm_dict}
 
+    def on_epoch_end(self):
+        self.tf_scheduler()
+
 
 class TeacherForcingScheduler(object):
-    def __init__(self, start_alpha, target_metric_value, factor, cooldown=0, patience=0):
-        self.alpha = start_alpha
+    def __init__(self, start_value, factor, step_size):
+        self.tf_prop = start_value
         self.factor = factor
-        self.cooldown = cooldown
-        self.patience = patience
-        self.target_metric_value = target_metric_value
-        self.num_steps_below = 0
-        self.steps_sice_decay = 0
+        self.step_size = step_size
+        self.steps = 0
 
-    def __call__(self, metric):
-        self.steps_sice_decay += 1
-        if metric >= self.target_metric_value:
-            self.num_steps_below += 1
-            if self.steps_sice_decay >= self.cooldown:
-                if self.num_steps_below >= self.patience:
-                    self.alpha *= self.factor
-                    self.steps_sice_decay = 0
-        else:
-            self.num_steps_below = 0
+    def __call__(self):
+        self.steps += 1
+        if self.step_size >= self.steps:
+            self.tf_prop *= self.factor
 
 
 
