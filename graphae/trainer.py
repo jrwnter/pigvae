@@ -20,7 +20,13 @@ class PLGraphAE(pl.LightningModule):
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
         self.critic = Critic(alpha=hparams["alpha"])
-        self.tf_scheduler = TeacherForcingScheduler(start_value=1.0, factor=0.8, step_size=1)
+        self.tf_scheduler = TeacherForcingScheduler2(
+            start_value=0.9,
+            target_metric_value=0.95,
+            factor=0.8,
+            cooldown=20,
+            patience=5
+        )
 
     def forward(self, graph, teacher_forcing, postprocess_method=None):
         if postprocess_method is None:
@@ -115,10 +121,11 @@ class PLGraphAE(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
+        tf_prop = self.tf_scheduler.tf_prop
         nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
         nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(
             graph=sparse_graph,
-            teacher_forcing=True,
+            teacher_forcing=tf_prop,
             postprocess_method=None
         )
         metrics_tf = self.critic.evaluate(
@@ -156,11 +163,13 @@ class PLGraphAE(pl.LightningModule):
         for key in outputs[0].keys():
             out[key] = torch.stack([output[key] for output in outputs]).mean()
         tqdm_dict = {'val_loss': out["loss"]}
+        out["tf_prop"] = self.tf_scheduler.tf_prop
+        self.tf_scheduler(out["adj_acc"])
 
         return {'val_loss': out["loss"], 'log': out, "progress_bar": tqdm_dict}
 
-    def on_epoch_end(self):
-        self.tf_scheduler()
+    """def on_epoch_end(self):
+        self.tf_scheduler()"""
 
 
 class TeacherForcingScheduler(object):
@@ -176,7 +185,25 @@ class TeacherForcingScheduler(object):
             self.tf_prop *= self.factor
 
 
+class TeacherForcingScheduler2(object):
+    def __init__(self, start_value, target_metric_value, factor, cooldown=0, patience=0):
+        self.tf_prop = start_value
+        self.factor = factor
+        self.cooldown = cooldown
+        self.patience = patience
+        self.target_metric_value = target_metric_value
+        self.num_steps_below = 0
+        self.steps_sice_decay = 0
 
-
+    def __call__(self, metric):
+        self.steps_sice_decay += 1
+        if metric >= self.target_metric_value:
+            self.num_steps_below += 1
+            if self.steps_sice_decay >= self.cooldown:
+                if self.num_steps_below >= self.patience:
+                    self.tf_prop *= self.factor
+                    self.steps_sice_decay = 0
+        else:
+            self.num_steps_below = 0
 
 

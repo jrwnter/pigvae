@@ -103,4 +103,6 @@ CUDA_VISIBLE_DEVICES=1 python graphae/main.py -i 16 --max_num_nodes 32 --batch_n
 CUDA_VISIBLE_DEVICES=2 python graphae/main.py -i 17 --max_num_nodes 32 --batch_norm --progress_bar --lr 0.00005 -b 256 --alpha 0.1 --graph_emb_dim 1024 &
 CUDA_VISIBLE_DEVICES=3 python graphae/main.py -i 18 --batch_norm --progress_bar --lr 0.00005 -b 256 --alpha 0.1  --graph_emb_dim 1024 --node_dim 512 &
 
-
+CUDA_VISIBLE_DEVICES=4 python graphae/main.py -i 19 --batch_norm --lr 0.00005 -b 256 --alpha 0.0 &
+# tf decay on 0.5 adj_acc
+CUDA_VISIBLE_DEVICES=7 python graphae/main.py -i 20 --batch_norm --lr 0.00005 -b 256 --alpha 0.0 &
