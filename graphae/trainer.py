@@ -20,9 +20,8 @@ class PLGraphAE(pl.LightningModule):
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
         self.critic = Critic(alpha=hparams["alpha"])
-        self.alpha_decay = AlphaDecay(hparams["alpha"], 0.99, 2, cooldown=20, patience=5)
 
-    def forward(self, graph, permute=True, round_perm=False, postprocess_method=None):
+    def forward(self, graph, teacher_forcing, postprocess_method=None):
         if postprocess_method is None:
             if self.hparams["postprocess_method"] == 0:
                 postprocess_method = None
@@ -34,14 +33,13 @@ class PLGraphAE(pl.LightningModule):
                 postprocess_method = "softmax"
             else:
                 raise NotImplementedError
-        node_logits, adj_logits, mask_logits, perms = self.graph_ae(
+        node_logits, adj_logits, mask_logits, node_emb_enc, node_emb_dec = self.graph_ae(
             graph=graph,
-            permute=permute,
-            round_perm=round_perm,
+            teacher_forcing=teacher_forcing,
             postprocess_method=postprocess_method,
             postprocess_temp=self.hparams["postprocess_temp"]
         )
-        return node_logits, adj_logits, mask_logits, perms
+        return node_logits, adj_logits, mask_logits, node_emb_enc, node_emb_dec
 
     def prepare_data(self):
         num_smiles = 1000000 if self.hparams["test"] else None
@@ -78,7 +76,7 @@ class PLGraphAE(pl.LightningModule):
         lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
             factor=0.5,
-            patience=15,
+            patience=10,
             cooldown=30,
             min_lr=1e-6,
         )
@@ -100,7 +98,7 @@ class PLGraphAE(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
-        nodes_pred, adj_pred, mask_pred, perm = self(sparse_graph)
+        nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(sparse_graph, teacher_forcing=True)
         nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
         loss = self.critic(
             nodes_true=nodes_true,
@@ -109,41 +107,47 @@ class PLGraphAE(pl.LightningModule):
             nodes_pred=nodes_pred,
             adj_pred=adj_pred,
             mask_pred=mask_pred,
-            perm=perm,
-            alpha=self.alpha_decay.alpha
+            node_emb_enc=node_emb_enc,
+            node_emb_dec=node_emb_dec,
         )
         return loss
 
     def validation_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
         nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
-        nodes_pred, adj_pred, mask_pred, perm = self(
+        nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(
             graph=sparse_graph,
-            permute=False,
+            teacher_forcing=True,
             postprocess_method=None
         )
-        nodes_pred_, adj_pred_, mask_pred_, perm_ = self.graph_ae.permute(
-            nodes=nodes_pred,
-            adj=adj_pred,
-            mask=mask_pred,
-            perm=perm,
-            round=False
+        metrics_tf = self.critic.evaluate(
+            nodes_true=nodes_true,
+            adj_true=adj_true,
+            mask_true=mask_true,
+            nodes_pred=nodes_pred,
+            adj_pred=adj_pred,
+            mask_pred=mask_pred,
+            node_emb_enc=node_emb_enc,
+            node_emb_dec=node_emb_dec,
         )
-        metrics_soft = self.critic.evaluate(nodes_true, adj_true, mask_true, nodes_pred_, adj_pred_, mask_pred_, perm, self.alpha_decay.alpha)
-        nodes_pred, adj_pred = self.graph_ae.postprocess_logits(
-            node_logits=nodes_pred,
-            adj_logits=adj_pred,
-            method="softmax"
+        nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(
+            graph=sparse_graph,
+            teacher_forcing=False,
+            postprocess_method=None
         )
-        nodes_pred, adj_pred, mask_pred, perm_ = self.graph_ae.permute(
-            nodes=nodes_pred,
-            adj=adj_pred,
-            mask=mask_pred,
-            perm=perm,
-            round=True
+
+        metrics_no_tf = self.critic.evaluate(
+            nodes_true=nodes_true,
+            adj_true=adj_true,
+            mask_true=mask_true,
+            nodes_pred=nodes_pred,
+            adj_pred=adj_pred,
+            mask_pred=mask_pred,
+            node_emb_enc=node_emb_enc,
+            node_emb_dec=node_emb_dec,
+            prefix="no_tf"
         )
-        metrics_hard = self.critic.evaluate(nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, perm, self.alpha_decay.alpha, "hard")
-        metrics = {**metrics_soft, **metrics_hard}
+        metrics = {**metrics_tf, **metrics_no_tf}
         return metrics
 
     def validation_epoch_end(self, outputs):
@@ -152,13 +156,10 @@ class PLGraphAE(pl.LightningModule):
             out[key] = torch.stack([output[key] for output in outputs]).mean()
         tqdm_dict = {'val_loss': out["loss"]}
 
-        #self.alpha_decay(out["adj_acc"])
-        out["alpha"] = self.alpha_decay.alpha
-
         return {'val_loss': out["loss"], 'log': out, "progress_bar": tqdm_dict}
 
 
-class AlphaDecay(object):
+class TeacherForcingScheduler(object):
     def __init__(self, start_alpha, target_metric_value, factor, cooldown=0, patience=0):
         self.alpha = start_alpha
         self.factor = factor

@@ -17,7 +17,6 @@ class Encoder(torch.nn.Module):
             num_edge_features=hparams["num_edge_features"],
             num_layers=hparams["graph_encoder_num_layers_gnn"],
             batch_norm=hparams["batch_norm"],
-            #batch_norm=False,
             non_linearity=hparams["nonlin"],
             stack_node_emb=hparams["stack_node_emb"]
         )
@@ -53,7 +52,6 @@ class Decoder(torch.nn.Module):
             batch_norm=hparams["batch_norm"],
         )
         self.edge_predictor = decoder.EdgeDecoder(
-            emb_dim=hparams["graph_emb_dim"],
             node_dim=hparams["meta_node_dim"],
             hidden_dim=hparams["edge_predictor_hidden_dim"],
             num_nodes=hparams["max_num_nodes"],
@@ -71,35 +69,11 @@ class Decoder(torch.nn.Module):
             non_lin=hparams["nonlin"]
         )
 
-    def forward(self, graph_emb):
-        node_embs = self.node_emb_predictor(graph_emb)
+    def forward(self, graph_emb, node_emb_encoded, teacher_forcing):
+        node_embs = self.node_emb_predictor(graph_emb, node_emb_encoded, teacher_forcing)
         node_logits = self.node_predictor(node_embs)
-        adj_logits = self.edge_predictor(graph_emb, node_embs)
+        adj_logits = self.edge_predictor(node_embs)
         return node_logits, adj_logits, node_embs
-
-
-class Permuter(torch.nn.Module):
-    def __init__(self, hparams):
-        super().__init__()
-        self.hparams = hparams
-        self.permuter = permuter.Permuter(
-            input_dim=hparams["node_dim"],
-            hidden_dim=hparams["permuter_hidden_dim"],
-            num_layers=hparams["permuter_num_layers"],
-            num_nodes=hparams["max_num_nodes"],
-            batch_norm=hparams["batch_norm"],
-            non_linearity=hparams["nonlin"]
-        )
-
-    def forward(self, node_embs_in, node_embs_out, eps=10e-9):
-        perm = self.permuter(node_embs_in, node_embs_out)
-        #perm = sinkhorn_ops.simple_sinkhorn(perm)
-        perm = perm / (perm.sum(axis=1, keepdim=True) + eps / 10000) + eps
-        perm = perm / (perm.sum(axis=2, keepdim=True) + eps / 10000) + eps
-        #perm = perm / (perm.sum(axis=1, keepdim=True) + eps / 10000) + eps
-        #perm = perm / (perm.sum(axis=2, keepdim=True) + eps / 10000) + eps
-        #perm = perm + eps
-        return perm
 
 
 class GraphAE(torch.nn.Module):
@@ -108,17 +82,20 @@ class GraphAE(torch.nn.Module):
         self.num_nodes = hparams["max_num_nodes"]
         self.encoder = Encoder(hparams)
         self.decoder = Decoder(hparams)
-        self.permuter = Permuter(hparams)
 
-    def forward(self, graph, permute=True, round_perm=False, postprocess_method=None, postprocess_temp=1.0):
-        graph_emb, node_embs = self.encoder(graph)
-        node_logits, adj_logits, node_embs_ = self.decoder(graph_emb)
-        mask_logits, node_logits = node_logits[:, :, 0], node_logits[:, :, 1:]
-        node_embs = node_embs_to_dense(
-            node_embs=node_embs,
+    def forward(self, graph, teacher_forcing, postprocess_method=None, postprocess_temp=1.0):
+        graph_emb, node_emb_enc = self.encoder(graph=graph)
+        node_emb_enc = node_embs_to_dense(
+            node_embs=node_emb_enc,
             num_nodes=self.num_nodes,
-            batch_idxs=graph.batch)
-        perm = self.permuter(node_embs, node_embs_)
+            batch_idxs=graph.batch
+        )
+        node_logits, adj_logits, node_emb_dec = self.decoder(
+            graph_emb=graph_emb,
+            node_emb_encoded=node_emb_enc,
+            teacher_forcing=teacher_forcing
+        )
+        mask_logits, node_logits = node_logits[:, :, 0], node_logits[:, :, 1:]
         if postprocess_method is not None:
             node_logits, adj_logits = self.postprocess_logits(
                 node_logits=node_logits,
@@ -126,23 +103,7 @@ class GraphAE(torch.nn.Module):
                 method=postprocess_method,
                 temp=postprocess_temp
             )
-        if permute:
-            node_logits, adj_logits, mask_logits, perm = self.permute(
-                nodes=node_logits,
-                adj=adj_logits,
-                mask=mask_logits,
-                perm=perm,
-                round=round_perm)
-        return node_logits, adj_logits, mask_logits, perm
-
-    def permute(self, nodes, adj, mask, perm, round=False):
-        if round:
-            perm = torch.where(perm == perm.max(axis=2)[0].unsqueeze(2), torch.ones_like(perm), torch.zeros_like(perm))
-        nodes = torch.matmul(perm, nodes)
-        shape = adj.shape
-        adj = torch.matmul(perm, adj.view(shape[0], shape[1], shape[2] * shape[3])).view(shape)
-        mask = torch.matmul(perm, mask.unsqueeze(-1)).squeeze()
-        return nodes, adj, mask, perm
+        return node_logits, adj_logits, mask_logits, node_emb_enc, node_emb_dec
 
     @staticmethod
     def postprocess_logits(node_logits, adj_logits, method=None, temp=1.0):

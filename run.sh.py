@@ -74,3 +74,28 @@ CUDA_VISIBLE_DEVICES=8 python graphae/main.py -i 91 -g 1 -b 512 --graph_emb_dim 
 
 
 
+#######  saves 7
+
+CUDA_VISIBLE_DEVICES=2 python graphae/main.py -i 1 --batch_norm --progress_bar
+CUDA_VISIBLE_DEVICES=3 python graphae/main.py -i 2 --batch_norm --progress_bar --graph_emb_dim 1024 --alpha 0.01
+CUDA_VISIBLE_DEVICES=4 python graphae/main.py -i 3 --batch_norm --progress_bar --lr 0.00005 -b 256
+
+# new matching loss
+CUDA_VISIBLE_DEVICES=5 python graphae/main.py -i 4--batch_norm --progress_bar --lr 0.00005 -b 256
+CUDA_VISIBLE_DEVICES=5 python graphae/main.py -i 4--batch_norm --progress_bar --lr 0.00005 -b 256 --alpha 0.01
+
+# random smiles fix
+
+CUDA_VISIBLE_DEVICES=6 python graphae/main.py -i 5 --batch_norm --progress_bar --lr 0.00005 -b 256 --alpha 0.0
+
+CUDA_VISIBLE_DEVICES=7 python graphae/main.py -i 6 --batch_norm --progress_bar --lr 0.00005 -b 256 --alpha 0.01
+CUDA_VISIBLE_DEVICES=4 python graphae/main.py -i 7 --batch_norm --lr 0.00005 -b 256 --alpha 0.01 --graph_emb_dim 1024
+CUDA_VISIBLE_DEVICES=8 python graphae/main.py -i 8 --batch_norm --lr 0.0002 -b 256 --alpha 0.01 --graph_emb_dim 1024 &
+CUDA_VISIBLE_DEVICES=9 python graphae/main.py -i 9 --batch_norm --lr 0.0002 -b 256 --alpha 0.01 --graph_emb_dim 1024 &
+CUDA_VISIBLE_DEVICES=10 python graphae/main.py -i 10 --batch_norm --lr 0.0002 -b 256 --alpha 0.1 --graph_emb_dim 1024 &
+CUDA_VISIBLE_DEVICES=11 python graphae/main.py -i 11 --batch_norm --lr 0.0002 -b 256 --alpha 1.0 --graph_emb_dim 1024 &
+CUDA_VISIBLE_DEVICES=12 python graphae/main.py -i 12 --max_num_nodes 32 --batch_norm --lr 0.0002 -b 256 --alpha 1.0 --graph_emb_dim 1024 &
+
+CUDA_VISIBLE_DEVICES=11 python graphae/main.py -i 13 --batch_norm --lr 0.0002 -b 256 --alpha 0.1 --graph_emb_dim 512 &
+
+CUDA_VISIBLE_DEVICES=5 python graphae/main.py -i 14 --batch_norm --progress_bar --lr 0.00005 -b 256 --alpha 0.1 &

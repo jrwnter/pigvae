@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from sklearn.metrics import balanced_accuracy_score
-from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss, L1Loss
+from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss, L1Loss, MSELoss, TripletMarginLoss
 
 
 # 32
@@ -27,23 +27,32 @@ MASK_POS_WEIGHT = torch.Tensor([0.1214])
 
 
 class Critic(torch.nn.Module):
-    def __init__(self, alpha=0.01):
+    def __init__(self, alpha=1):
         super().__init__()
         self.reconstruction_loss = GraphReconstructionLoss()
-        self.permutation_matrix_penalty = PermutaionMatrixPenalty()
+        self.node_emb_matching_loss = NodeEmbMatchingLoss()
         self.alpha = alpha
 
-    def forward(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, perm, alpha=None):
-        recon_loss = self.reconstruction_loss(nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred)
-        perm_loss = self.permutation_matrix_penalty(perm)
-        loss = {**recon_loss, "perm_loss": perm_loss}
-        if alpha is None:
-            loss["loss"] += self.alpha * loss["perm_loss"]
-        else:
-            loss["loss"] += alpha * loss["perm_loss"]
+    def forward(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec):
+        recon_loss = self.reconstruction_loss(
+            nodes_true=nodes_true,
+            adj_true=adj_true,
+            mask_true=mask_true,
+            nodes_pred=nodes_pred,
+            adj_pred=adj_pred,
+            mask_pred=mask_pred
+        )
+        node_emb_matching_loss = self.node_emb_matching_loss(
+            node_emb_enc=node_emb_enc,
+            node_emb_dec=node_emb_dec
+        )
+        loss = {**recon_loss, "node_emb_matching_loss": node_emb_matching_loss}
+        loss["loss"] += self.alpha * loss["node_emb_matching_loss"]
+
         return loss
 
-    def evaluate(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, perm, alpha, prefix=None):
+    def evaluate(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred,
+                 node_emb_enc, node_emb_dec, prefix=None):
         loss = self(
             nodes_true=nodes_true,
             adj_true=adj_true,
@@ -51,10 +60,9 @@ class Critic(torch.nn.Module):
             nodes_pred=nodes_pred,
             adj_pred=adj_pred,
             mask_pred=mask_pred,
-            perm=perm,
-            alpha=alpha
+            node_emb_enc=node_emb_enc,
+            node_emb_dec=node_emb_dec,
         )
-        # nodes_pred_oh, adj_pred_oh = self.graph_ae.logits_to_one_hot(nodes_pred, adj_pred)
         element_type_acc, charge_type_acc, hybridization_type_acc = node_balanced_accuracy(
             nodes_pred=nodes_pred,
             nodes_true=nodes_true,
@@ -76,7 +84,6 @@ class Critic(torch.nn.Module):
             "hybridization_type_acc": hybridization_type_acc,
             "adj_acc": adj_acc,
             "mask_acc": mask_acc,
-            "mean_max_perm_value": perm.max(axis=1)[0].mean()
         }
         if prefix is not None:
             output2 = {}
@@ -141,46 +148,21 @@ class GraphReconstructionLoss(torch.nn.Module):
         return loss
 
 
-class PermutaionMatrixPenalty(torch.nn.Module):
+class NodeEmbMatchingLoss(torch.nn.Module):
     def __init__(self):
         super().__init__()
+        self.loss = TripletMarginLoss()
 
-    """def row_col_penalty(self, perm, axis):
-        # v: [batch_size, num_nodes, num_nodes]
-        loss = torch.sum(torch.sum(torch.abs(perm), axis=axis) - torch.sqrt(torch.sum(torch.pow(perm, 2), axis=axis)), axis=1)
-        return loss
-
-    def forward(self, perm):
-        batch_size = perm.size(0)
-        num_nodes = perm.size(1)
-        identity = torch.ones((batch_size, num_nodes)).type_as(perm)
-        penalty = self.row_col_penalty(perm, axis=1) + self.row_col_penalty(perm, axis=2)
-        constrain_col = torch.abs(torch.sum(perm, axis=1) - identity).mean(axis=1)
-        constrain_row = torch.abs(torch.sum(perm, axis=2) - identity).mean(axis=1)
-        #constrain_pos = torch.min(torch.zeros_like(perm), perm).mean(axis=(1, 2))
-        constrain = constrain_col + constrain_row #+ constrain_pos
-        loss = penalty + constrain
+    def forward(self, node_emb_enc, node_emb_dec, eps=10e-10):
+        batch_size = node_emb_enc.size(0)
+        num_nodes = node_emb_enc.size(1)
+        dm = torch.norm(node_emb_enc.unsqueeze(1) - node_emb_dec.unsqueeze(2), dim=-1)
+        dia = torch.diagonal(dm, 0, dim1=1, dim2=2)  # [batch_size, num_nodes]
+        off_dia_mean = dm.masked_fill(torch.eye(num_nodes).view(1, num_nodes, num_nodes).repeat(batch_size, 1, 1).type_as(dm).bool(), 0)
+        off_dia_mean = off_dia_mean.mean(dim=-1)
+        #print(dia_sum.shape, off_dia_mean.shape)
+        loss = dia / (off_dia_mean + eps)
         loss = loss.mean()
-        return loss"""
-    @staticmethod
-    def entropy(p, axis, normalize=True, eps=10e-12):
-        if normalize:
-            p = p / (p.sum(axis=axis, keepdim=True) + eps)
-        e = - torch.sum(p * torch.clamp_min(torch.log(p), -100), axis=axis)
-        return e
-
-    def forward(self, perm):
-        batch_size = perm.size(0)
-        num_nodes = perm.size(1)
-        entropy_col = self.entropy(perm, axis=1)
-        entropy_row = self.entropy(perm, axis=2)
-        penalty = entropy_col.mean() + entropy_row.mean()
-        identity = torch.ones((batch_size, num_nodes)).type_as(perm)
-        constrain_col = torch.abs(torch.sum(perm, axis=1) - identity).mean()
-        constrain_row = torch.abs(torch.sum(perm, axis=2) - identity).mean()
-        constrain = constrain_col + constrain_row
-        #loss = penalty + 10 * constrain
-        loss = penalty + 5 * constrain
         return loss
 
 
