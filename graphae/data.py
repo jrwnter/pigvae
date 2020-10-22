@@ -15,17 +15,19 @@ NUM_ELEMENTS = len(ELEM_LIST)
 
 
 class MolecularGraphDatasetFromSmiles(Dataset):
-    def __init__(self, smiles_list, num_nodes):
+    def __init__(self, smiles_list, num_nodes, randomize_smiles=True):
         super().__init__()
         self.smiles = smiles_list
         self.dense_transform = ToDense(num_nodes=num_nodes)
+        self.randomize_smiles = randomize_smiles
 
     def __len__(self):
         return len(self.smiles)
 
     def __getitem__(self, idx):
         smiles = self.smiles[idx]
-        smiles = Chem.MolToSmiles(Chem.MolFromSmiles(smiles), doRandom=True)
+        if self.randomize_smiles:
+            smiles = Chem.MolToSmiles(Chem.MolFromSmiles(smiles), doRandom=True)
         sparse_graph = MolecularGraph.from_smiles(smiles)
         dense_graph = self.dense_transform(sparse_graph.clone())
         dense_graph.x = dense_graph.x.unsqueeze(0)

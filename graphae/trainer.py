@@ -20,9 +20,9 @@ class PLGraphAE(pl.LightningModule):
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
         self.critic = Critic(alpha=hparams["alpha"])
-        self.alpha_decay = AlphaDecay(hparams["alpha"], 0.99, 2, cooldown=20, patience=5)
+        self.tf_scheduler = TeacherForcingScheduler(start_value=1.0, factor=0.8, step_size=1)
 
-    def forward(self, graph, permute=True, round_perm=False, postprocess_method=None):
+    def forward(self, graph, teacher_forcing, postprocess_method=None):
         if postprocess_method is None:
             if self.hparams["postprocess_method"] == 0:
                 postprocess_method = None
@@ -34,14 +34,13 @@ class PLGraphAE(pl.LightningModule):
                 postprocess_method = "softmax"
             else:
                 raise NotImplementedError
-        node_logits, adj_logits, mask_logits, perms = self.graph_ae(
+        node_logits, adj_logits, mask_logits, node_emb_enc, node_emb_dec = self.graph_ae(
             graph=graph,
-            permute=permute,
-            round_perm=round_perm,
+            teacher_forcing=teacher_forcing,
             postprocess_method=postprocess_method,
             postprocess_temp=self.hparams["postprocess_temp"]
         )
-        return node_logits, adj_logits, mask_logits, perms
+        return node_logits, adj_logits, mask_logits, node_emb_enc, node_emb_dec
 
     def prepare_data(self):
         num_smiles = 1000000 if self.hparams["test"] else None
@@ -75,10 +74,10 @@ class PLGraphAE(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.graph_ae.parameters(), lr=self.hparams["lr"])
-        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        """lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
             factor=0.5,
-            patience=15,
+            patience=10,
             cooldown=30,
             min_lr=1e-6,
         )
@@ -86,21 +85,21 @@ class PLGraphAE(pl.LightningModule):
             'scheduler': lr_scheduler,
             'interval': 'step',
             'frequency': self.hparams["eval_freq"] + 1
-        }
-        """
+        }"""
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer=optimizer,
-            step_size=5,
-            gamma=0.5,
+            step_size=1,
+            gamma=0.8,
         )
         scheduler = {
             'scheduler': lr_scheduler,
-        }"""
+        }
         return [optimizer], [scheduler]
 
     def training_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
-        nodes_pred, adj_pred, mask_pred, perm = self(sparse_graph)
+        tf_prop = self.tf_scheduler.tf_prop
+        nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(sparse_graph, teacher_forcing=tf_prop)
         nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
         loss = self.critic(
             nodes_true=nodes_true,
@@ -109,41 +108,47 @@ class PLGraphAE(pl.LightningModule):
             nodes_pred=nodes_pred,
             adj_pred=adj_pred,
             mask_pred=mask_pred,
-            perm=perm,
-            alpha=self.alpha_decay.alpha
+            node_emb_enc=node_emb_enc,
+            node_emb_dec=node_emb_dec,
         )
         return loss
 
     def validation_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
         nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
-        nodes_pred, adj_pred, mask_pred, perm = self(
+        nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(
             graph=sparse_graph,
-            permute=False,
+            teacher_forcing=True,
             postprocess_method=None
         )
-        nodes_pred_, adj_pred_, mask_pred_, perm_ = self.graph_ae.permute(
-            nodes=nodes_pred,
-            adj=adj_pred,
-            mask=mask_pred,
-            perm=perm,
-            round=False
+        metrics_tf = self.critic.evaluate(
+            nodes_true=nodes_true,
+            adj_true=adj_true,
+            mask_true=mask_true,
+            nodes_pred=nodes_pred,
+            adj_pred=adj_pred,
+            mask_pred=mask_pred,
+            node_emb_enc=node_emb_enc,
+            node_emb_dec=node_emb_dec,
         )
-        metrics_soft = self.critic.evaluate(nodes_true, adj_true, mask_true, nodes_pred_, adj_pred_, mask_pred_, perm, self.alpha_decay.alpha)
-        nodes_pred, adj_pred = self.graph_ae.postprocess_logits(
-            node_logits=nodes_pred,
-            adj_logits=adj_pred,
-            method="softmax"
+        nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(
+            graph=sparse_graph,
+            teacher_forcing=0.0,
+            postprocess_method=None
         )
-        nodes_pred, adj_pred, mask_pred, perm_ = self.graph_ae.permute(
-            nodes=nodes_pred,
-            adj=adj_pred,
-            mask=mask_pred,
-            perm=perm,
-            round=True
+
+        metrics_no_tf = self.critic.evaluate(
+            nodes_true=nodes_true,
+            adj_true=adj_true,
+            mask_true=mask_true,
+            nodes_pred=nodes_pred,
+            adj_pred=adj_pred,
+            mask_pred=mask_pred,
+            node_emb_enc=node_emb_enc,
+            node_emb_dec=node_emb_dec,
+            prefix="no_tf"
         )
-        metrics_hard = self.critic.evaluate(nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, perm, self.alpha_decay.alpha, "hard")
-        metrics = {**metrics_soft, **metrics_hard}
+        metrics = {**metrics_tf, **metrics_no_tf}
         return metrics
 
     def validation_epoch_end(self, outputs):
@@ -152,32 +157,23 @@ class PLGraphAE(pl.LightningModule):
             out[key] = torch.stack([output[key] for output in outputs]).mean()
         tqdm_dict = {'val_loss': out["loss"]}
 
-        #self.alpha_decay(out["adj_acc"])
-        out["alpha"] = self.alpha_decay.alpha
-
         return {'val_loss': out["loss"], 'log': out, "progress_bar": tqdm_dict}
 
+    def on_epoch_end(self):
+        self.tf_scheduler()
 
-class AlphaDecay(object):
-    def __init__(self, start_alpha, target_metric_value, factor, cooldown=0, patience=0):
-        self.alpha = start_alpha
+
+class TeacherForcingScheduler(object):
+    def __init__(self, start_value, factor, step_size):
+        self.tf_prop = start_value
         self.factor = factor
-        self.cooldown = cooldown
-        self.patience = patience
-        self.target_metric_value = target_metric_value
-        self.num_steps_below = 0
-        self.steps_sice_decay = 0
+        self.step_size = step_size
+        self.steps = 0
 
-    def __call__(self, metric):
-        self.steps_sice_decay += 1
-        if metric >= self.target_metric_value:
-            self.num_steps_below += 1
-            if self.steps_sice_decay >= self.cooldown:
-                if self.num_steps_below >= self.patience:
-                    self.alpha *= self.factor
-                    self.steps_sice_decay = 0
-        else:
-            self.num_steps_below = 0
+    def __call__(self):
+        self.steps += 1
+        if self.step_size >= self.steps:
+            self.tf_prop *= self.factor
 
 
 
