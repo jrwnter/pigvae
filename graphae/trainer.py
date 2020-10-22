@@ -20,7 +20,7 @@ class PLGraphAE(pl.LightningModule):
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
         self.critic = Critic(alpha=hparams["alpha"])
-        self.tf_scheduler = TeacherForcingScheduler(start_value=1.0, factor=0.8)
+        self.tf_scheduler = TeacherForcingScheduler(start_value=1.0, factor=0.8, step_size=1)
 
     def forward(self, graph, teacher_forcing, postprocess_method=None):
         if postprocess_method is None:

@@ -43,7 +43,7 @@ class Decoder(torch.nn.Module):
         super().__init__()
         self.node_emb_predictor = decoder.NodeEmbDecoder(
             emb_dim=hparams["graph_emb_dim"],
-            node_dim=hparams["meta_node_dim"],
+            node_dim=hparams["node_dim"],
             hidden_dim=hparams["meta_node_decoder_hidden_dim"],
             num_nodes=hparams["max_num_nodes"],
             num_layers_fnn=hparams["meta_node_decoder_num_layers_fnn"],
@@ -52,7 +52,7 @@ class Decoder(torch.nn.Module):
             batch_norm=hparams["batch_norm"],
         )
         self.edge_predictor = decoder.EdgeDecoder(
-            node_dim=hparams["meta_node_dim"],
+            node_dim=hparams["node_dim"],
             hidden_dim=hparams["edge_predictor_hidden_dim"],
             num_nodes=hparams["max_num_nodes"],
             num_layers=hparams["edge_predictor_num_layers"],
@@ -61,7 +61,7 @@ class Decoder(torch.nn.Module):
             batch_norm=hparams["batch_norm"],
         )
         self.node_predictor = decoder.NodePredictor(
-            node_dim=hparams["meta_node_dim"],
+            node_dim=hparams["node_dim"],
             hidden_dim=hparams["node_decoder_hidden_dim"],
             num_layers=hparams["node_decoder_num_layers"],
             batch_norm=hparams["batch_norm"],

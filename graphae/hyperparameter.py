@@ -55,7 +55,6 @@ def add_arguments(parser):
 
 
     # DECODER
-    parser.add_argument("--meta_node_dim", default=256, type=int)
     parser.add_argument("--meta_node_decoder_hidden_dim", default=2048, type=int)
     parser.add_argument("--meta_node_decoder_num_layers_fnn", default=3, type=int)
     parser.add_argument("--meta_node_decoder_num_layers_rnn", default=3, type=int)

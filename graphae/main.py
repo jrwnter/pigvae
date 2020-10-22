@@ -42,6 +42,7 @@ def main(hparams):
         callbacks=[lr_logger],
         profiler=True,
         terminate_on_nan=True,
+        #resume_from_checkpoint="saves7/run{}/{}_last.ckpt".format(hparams.id, hparams.id)
     )
     trainer.fit(model)
 

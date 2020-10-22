@@ -99,3 +99,9 @@ CUDA_VISIBLE_DEVICES=12 python graphae/main.py -i 12 --max_num_nodes 32 --batch_
 CUDA_VISIBLE_DEVICES=11 python graphae/main.py -i 13 --batch_norm --lr 0.0002 -b 256 --alpha 0.1 --graph_emb_dim 512 &
 
 CUDA_VISIBLE_DEVICES=5 python graphae/main.py -i 14 --batch_norm --progress_bar --lr 0.00005 -b 256 --alpha 0.1 &
+CUDA_VISIBLE_DEVICES=0 python graphae/main.py -i 15 --batch_norm --progress_bar --lr 0.00005 -b 256 --alpha 0.1  --graph_emb_dim 1024 &
+CUDA_VISIBLE_DEVICES=1 python graphae/main.py -i 16 --max_num_nodes 32 --batch_norm --progress_bar --lr 0.00005 -b 256 --alpha 0.1 &
+CUDA_VISIBLE_DEVICES=2 python graphae/main.py -i 17 --max_num_nodes 32 --batch_norm --progress_bar --lr 0.00005 -b 256 --alpha 0.1 --graph_emb_dim 1024 &
+CUDA_VISIBLE_DEVICES=3 python graphae/main.py -i 18 --batch_norm --progress_bar --lr 0.00005 -b 256 --alpha 0.1  --graph_emb_dim 1024 --node_dim 512 &
+
+
