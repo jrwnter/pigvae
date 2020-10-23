@@ -35,6 +35,10 @@ class NodeEmbDecoder(torch.nn.Module):
             non_linearity=non_lin,
             batch_norm=False,
         )
+        self.linear_out = Linear(
+            in_features=hidden_dim,
+            out_features=node_dim
+        )
 
     def forward(self, emb, node_emb_encoded, teacher_forcing):
         # emb [batch_size, emb_dim]
@@ -50,7 +54,8 @@ class NodeEmbDecoder(torch.nn.Module):
         idxs = []
         for i in range(self.num_nodes):
             x, (hx, cx) = self.rnn(decoder_input.unsqueeze(0), (hx, cx))
-            x = self.fnn_out(x[0])
+            #x = self.fnn_out(x[0])
+            x = self.linear_out(x[0])
             node_emb_pred.append(x)
             idx = torch.argmin(torch.norm(x.unsqueeze(1) - node_emb_encoded_, dim=-1), dim=-1)  # [batch_size]
             idxs.append(idx)
