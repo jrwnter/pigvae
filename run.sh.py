@@ -114,4 +114,9 @@ CUDA_VISIBLE_DEVICES=3 python graphae/main.py -i 36 --batch_norm --lr 0.00005 -b
 CUDA_VISIBLE_DEVICES=4 python graphae/main.py -i 37 --batch_norm --lr 0.00005 -b 256 --alpha 0.1 --max_num_nodes 32 &
 CUDA_VISIBLE_DEVICES=5 python graphae/main.py -i 38 --batch_norm --lr 0.00005 -b 256 --alpha 0.1 --max_num_nodes 32 --graph_emb_dim 1024 --node_dim 512 &
 
+CUDA_VISIBLE_DEVICES=7 python graphae/main.py -i 39 --batch_norm --lr 0.00005 -b 256 --alpha 1.0 --progress_bar
+# no detach of enocded node embs
+CUDA_VISIBLE_DEVICES=8 python graphae/main.py -i 40 --batch_norm --lr 0.00005 -b 256 --alpha 1.0 --progress_bar
+# noise on enocded node embs
+CUDA_VISIBLE_DEVICES=9 python graphae/main.py -i 41 --batch_norm --lr 0.00005 -b 256 --alpha 1.0 --progress_bar
 

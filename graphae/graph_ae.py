@@ -1,62 +1,45 @@
 import torch
-from graphae import encoder, decoder, permuter, sinkhorn_ops
-from graphae.fully_connected import FNN
-from time import time
+from graphae import encoder, decoder
 
 
-class Encoder(torch.nn.Module):
+class GraphEncoder(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
-        self.stack_node_emb = hparams["stack_node_emb"]
-
-        self.graph_encoder = encoder.GraphEncoder(
+        self.num_nodes = hparams["max_num_nodes"]
+        self.encoder = encoder.GraphEncoder(
             input_dim=hparams["num_node_features"],
-            hidden_dim=hparams["graph_encoder_hidden_dim_gnn"],
+            hidden_dim_gnn=hparams["graph_encoder_hidden_dim_gnn"],
+            hidden_dim_fnn=hparams["graph_encoder_hidden_dim_fnn"],
+            num_layers_gnn=hparams["graph_encoder_num_layers_gnn"],
+            num_layers_fnn=hparams["graph_encoder_num_layers_fnn"],
             node_dim=hparams["node_dim"],
             num_nodes=hparams["max_num_nodes"],
             num_edge_features=hparams["num_edge_features"],
-            num_layers=hparams["graph_encoder_num_layers_gnn"],
             batch_norm=hparams["batch_norm"],
             non_linearity=hparams["nonlin"],
             stack_node_emb=hparams["stack_node_emb"]
         )
-        self.node_aggregator = encoder.NodeAggregator(
-            input_dim=hparams["graph_encoder_num_layers_gnn"] * hparams["node_dim"] if hparams["stack_node_emb"] else hparams["node_dim"],
-            emb_dim=hparams["graph_emb_dim"],
-            hidden_dim=hparams["graph_encoder_hidden_dim_fnn"],
-            num_layers=hparams["graph_encoder_num_layers_fnn"],
-            batch_norm=hparams["batch_norm"],
-            non_linearity=hparams["nonlin"]
-        )
 
     def forward(self, graph):
-        node_embs = self.graph_encoder(graph)
-        assert graph.batch is not None  # TODO: implement torch.ones batch for single graph case
-        graph_emb = self.node_aggregator(node_embs, batch_idxs=graph.batch)
-        if self.stack_node_emb:
-            node_embs = node_embs[:, :, -1]  # just take output (node emb) of the last layer
-        return graph_emb, node_embs
+        node_embs = self.encoder(graph)
+        node_embs = node_embs_to_dense(
+            node_embs=node_embs,
+            num_nodes=self.num_nodes,
+            batch_idxs=graph.batch
+        )
+        return node_embs
 
 
-class Decoder(torch.nn.Module):
+class GraphDecoder(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
-        self.node_emb_predictor = decoder.NodeEmbDecoder(
-            emb_dim=hparams["graph_emb_dim"],
-            node_dim=hparams["node_dim"],
-            hidden_dim=hparams["meta_node_decoder_hidden_dim"],
-            num_nodes=hparams["max_num_nodes"],
-            num_layers_fnn=hparams["meta_node_decoder_num_layers_fnn"],
-            num_layers_rnn=hparams["meta_node_decoder_num_layers_rnn"],
-            non_lin=hparams["nonlin"],
-            batch_norm=hparams["batch_norm"],
-        )
+
         self.edge_predictor = decoder.EdgeDecoder(
             node_dim=hparams["node_dim"],
-            hidden_dim=hparams["edge_predictor_hidden_dim"],
-            num_nodes=hparams["max_num_nodes"],
-            num_layers=hparams["edge_predictor_num_layers"],
+            hidden_dim=hparams["edge_decoder_hidden_dim"],
+            num_layers=hparams["edge_decoder_num_layers"],
             num_edge_features=hparams["num_edge_features"],
+            num_nodes=hparams["max_num_nodes"],
             non_lin=hparams["nonlin"],
             batch_norm=hparams["batch_norm"],
         )
@@ -69,41 +52,29 @@ class Decoder(torch.nn.Module):
             non_lin=hparams["nonlin"]
         )
 
-    def forward(self, graph_emb, node_emb_encoded, teacher_forcing):
-        node_embs = self.node_emb_predictor(graph_emb, node_emb_encoded, teacher_forcing)
+    def forward(self, node_embs):
         node_logits = self.node_predictor(node_embs)
         adj_logits = self.edge_predictor(node_embs)
-        return node_logits, adj_logits, node_embs
+        mask_logits, node_logits = node_logits[:, :, 0], node_logits[:, :, 1:]
+        return node_logits, adj_logits, mask_logits
 
 
 class GraphAE(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
-        self.num_nodes = hparams["max_num_nodes"]
-        self.encoder = Encoder(hparams)
-        self.decoder = Decoder(hparams)
+        self.encoder = GraphEncoder(hparams)
+        self.decoder = GraphDecoder(hparams)
 
-    def forward(self, graph, teacher_forcing=0.0, postprocess_method=None, postprocess_temp=1.0):
-        graph_emb, node_emb_enc = self.encoder(graph=graph)
-        node_emb_enc = node_embs_to_dense(
-            node_embs=node_emb_enc,
-            num_nodes=self.num_nodes,
-            batch_idxs=graph.batch
-        )
-        node_logits, adj_logits, node_emb_dec = self.decoder(
-            graph_emb=graph_emb,
-            node_emb_encoded=node_emb_enc,
-            teacher_forcing=teacher_forcing
-        )
-        mask_logits, node_logits = node_logits[:, :, 0], node_logits[:, :, 1:]
+    def forward(self, graph, postprocess_method=None):
+        node_embs = self.encoder(graph=graph)
+        node_logits, adj_logits, mask_logits = self.decoder(node_embs=node_embs)
         if postprocess_method is not None:
             node_logits, adj_logits = self.postprocess_logits(
                 node_logits=node_logits,
                 adj_logits=adj_logits,
                 method=postprocess_method,
-                temp=postprocess_temp
             )
-        return node_logits, adj_logits, mask_logits, node_emb_enc, node_emb_dec
+        return node_logits, adj_logits, mask_logits
 
     @staticmethod
     def postprocess_logits(node_logits, adj_logits, method=None, temp=1.0):

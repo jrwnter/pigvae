@@ -4,6 +4,7 @@ from torch_geometric.data import DataLoader
 from graphae.graph_ae import GraphAE
 from graphae.data import MolecularGraphDatasetFromSmiles, batch_to_dense
 from graphae.metrics import *
+from pivae.pivae import PIVAE
 from time import time
 
 
@@ -11,16 +12,11 @@ class PLGraphAE(pl.LightningModule):
 
     def __init__(self, hparams):
         super().__init__()
-        if "alpha" not in hparams:
-            hparams["alpha"] = 0.01
-        if "postprocess_method" not in hparams:
-            hparams["postprocess_method"] = 0
-        if "postprocess_temp" not in hparams:
-            hparams["postprocess_temp"] = 1.0
-        if "start_tf_prop" not in hparams:
-            hparams["start_tf_prop"] = 0.9
+        hparams["max_num_elements"] = hparams["max_num_nodes"]
+        hparams["element_dim"] = hparams["node_dim"]
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
+        self.pi_ae = PIVAE(hparams)
         self.critic = Critic(alpha=hparams["alpha"])
         self.tf_scheduler = TeacherForcingScheduler2(
             start_value=self.hparams["start_tf_prop"],
@@ -30,7 +26,7 @@ class PLGraphAE(pl.LightningModule):
             patience=5
         )
 
-    def forward(self, graph, teacher_forcing, postprocess_method=None):
+    def get_postprocess_method(self, postprocess_method):
         if postprocess_method is None:
             if self.hparams["postprocess_method"] == 0:
                 postprocess_method = None
@@ -41,14 +37,28 @@ class PLGraphAE(pl.LightningModule):
             elif self.hparams["postprocess_method"] == 3:
                 postprocess_method = "softmax"
             else:
+
                 raise NotImplementedError
-        node_logits, adj_logits, mask_logits, node_emb_enc, node_emb_dec = self.graph_ae(
-            graph=graph,
-            teacher_forcing=teacher_forcing,
-            postprocess_method=postprocess_method,
-            postprocess_temp=self.hparams["postprocess_temp"]
-        )
-        return node_logits, adj_logits, mask_logits, node_emb_enc, node_emb_dec
+        return postprocess_method
+
+    def forward(self, graph, teacher_forcing, use_pred_node_embs, postprocess_method=None):
+        postprocess_method = self.get_postprocess_method(postprocess_method)
+        node_embs = self.graph_ae.encoder(graph=graph)
+        # detach node embs: dont backpropagate pi_vae back to node_emb encoder
+        #node_embs_detached = node_embs.detach()
+        node_embs_detached = node_embs + 0.05 * torch.randn_like(node_embs)
+        node_embs_pred = self.pi_ae(node_embs_detached, teacher_forcing_prob=teacher_forcing)
+        if use_pred_node_embs:
+            node_logits, adj_logits, mask_logits = self.graph_ae.decoder(node_embs=node_embs_pred)
+        else:
+            node_logits, adj_logits, mask_logits = self.graph_ae.decoder(node_embs=node_embs)
+        if postprocess_method is not None:
+            node_logits, adj_logits = self.postprocess_logits(
+                node_logits=node_logits,
+                adj_logits=adj_logits,
+                method=postprocess_method,
+            )
+        return node_logits, adj_logits, mask_logits, node_embs_detached, node_embs_pred
 
     def prepare_data(self):
         num_smiles = 1000000 if self.hparams["test"] else None
@@ -107,7 +117,11 @@ class PLGraphAE(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
         tf_prop = self.tf_scheduler.tf_prop
-        nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(sparse_graph, teacher_forcing=tf_prop)
+        nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(
+            graph=sparse_graph,
+            teacher_forcing=tf_prop,
+            use_pred_node_embs=False
+        )
         nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
         loss = self.critic(
             nodes_true=nodes_true,
@@ -128,7 +142,8 @@ class PLGraphAE(pl.LightningModule):
         nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(
             graph=sparse_graph,
             teacher_forcing=tf_prop,
-            postprocess_method=None
+            postprocess_method=None,
+            use_pred_node_embs=False
         )
         metrics_tf = self.critic.evaluate(
             nodes_true=nodes_true,
@@ -143,7 +158,8 @@ class PLGraphAE(pl.LightningModule):
         nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(
             graph=sparse_graph,
             teacher_forcing=0.0,
-            postprocess_method=None
+            postprocess_method=None,
+            use_pred_node_embs=False
         )
 
         metrics_no_tf = self.critic.evaluate(
@@ -157,7 +173,43 @@ class PLGraphAE(pl.LightningModule):
             node_emb_dec=node_emb_dec,
             prefix="no_tf"
         )
-        metrics = {**metrics_tf, **metrics_no_tf}
+        nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(
+            graph=sparse_graph,
+            teacher_forcing=tf_prop,
+            use_pred_node_embs=True,
+            postprocess_method=None
+        )
+
+        metrics_dec_tf = self.critic.evaluate(
+            nodes_true=nodes_true,
+            adj_true=adj_true,
+            mask_true=mask_true,
+            nodes_pred=nodes_pred,
+            adj_pred=adj_pred,
+            mask_pred=mask_pred,
+            node_emb_enc=node_emb_enc,
+            node_emb_dec=node_emb_dec,
+            prefix="dec_tf"
+        )
+        nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(
+            graph=sparse_graph,
+            teacher_forcing=0.0,
+            use_pred_node_embs=True,
+            postprocess_method=None
+        )
+
+        metrics_dec_no_tf = self.critic.evaluate(
+            nodes_true=nodes_true,
+            adj_true=adj_true,
+            mask_true=mask_true,
+            nodes_pred=nodes_pred,
+            adj_pred=adj_pred,
+            mask_pred=mask_pred,
+            node_emb_enc=node_emb_enc,
+            node_emb_dec=node_emb_dec,
+            prefix="dec_no_tf"
+        )
+        metrics = {**metrics_tf, **metrics_no_tf, **metrics_dec_tf, **metrics_dec_no_tf}
         return metrics
 
     def validation_epoch_end(self, outputs):

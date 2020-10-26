@@ -148,7 +148,7 @@ class GraphReconstructionLoss(torch.nn.Module):
         return loss
 
 
-class NodeEmbMatchingLoss(torch.nn.Module):
+"""class NodeEmbMatchingLoss(torch.nn.Module):
     def __init__(self):
         super().__init__()
         self.loss = TripletMarginLoss()
@@ -163,6 +163,19 @@ class NodeEmbMatchingLoss(torch.nn.Module):
         #print(dia_sum.shape, off_dia_mean.shape)
         loss = dia / (off_dia_mean + eps)
         loss = loss.mean()
+        return loss"""
+
+
+class NodeEmbMatchingLoss(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.loss = MSELoss()
+
+    def forward(self, node_emb_enc, node_emb_dec):
+        loss = self.loss(
+            input=node_emb_dec,
+            target=node_emb_enc
+        )
         return loss
 
 
