@@ -17,11 +17,13 @@ class PLGraphAE(pl.LightningModule):
             hparams["postprocess_method"] = 0
         if "postprocess_temp" not in hparams:
             hparams["postprocess_temp"] = 1.0
+        if "start_tf_prop" not in hparams:
+            hparams["start_tf_prop"] = 0.9
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
         self.critic = Critic(alpha=hparams["alpha"])
         self.tf_scheduler = TeacherForcingScheduler2(
-            start_value=0.9,
+            start_value=self.hparams["start_tf_prop"],
             target_metric_value=0.95,
             factor=0.8,
             cooldown=20,

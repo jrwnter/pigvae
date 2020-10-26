@@ -109,3 +109,9 @@ CUDA_VISIBLE_DEVICES=7 python graphae/main.py -i 20 --batch_norm --lr 0.00005 -b
 
 # only one layer rnn out
 CUDA_VISIBLE_DEVICES=6 python graphae/main.py -i 27 --batch_norm --lr 0.00005 -b 256 --alpha 0.0 &
+CUDA_VISIBLE_DEVICES=0 python graphae/main.py -i 35 --batch_norm --lr 0.00005 -b 256 --alpha 0.1 &
+CUDA_VISIBLE_DEVICES=3 python graphae/main.py -i 36 --batch_norm --lr 0.00005 -b 256 --alpha 0.0 --max_num_nodes 32 &
+CUDA_VISIBLE_DEVICES=4 python graphae/main.py -i 37 --batch_norm --lr 0.00005 -b 256 --alpha 0.1 --max_num_nodes 32 &
+CUDA_VISIBLE_DEVICES=5 python graphae/main.py -i 38 --batch_norm --lr 0.00005 -b 256 --alpha 0.1 --max_num_nodes 32 --graph_emb_dim 1024 --node_dim 512 &
+
+
