@@ -27,14 +27,14 @@ class NodeEmbDecoder(torch.nn.Module):
             num_layers=num_layers_rnn,
             batch_first=False,
         )
-        self.fnn_out = self.fnn = FNN(
+        """self.fnn_out = self.fnn = FNN(
             input_dim=hidden_dim,
             hidden_dim=hidden_dim,
             output_dim=node_dim,
             num_layers=num_layers_fnn,
             non_linearity=non_lin,
             batch_norm=False,
-        )
+        )"""
         self.linear_out = Linear(
             in_features=hidden_dim,
             out_features=node_dim
