@@ -41,13 +41,13 @@ class PLGraphAE(pl.LightningModule):
                 raise NotImplementedError
         return postprocess_method
 
-    def forward(self, graph, teacher_forcing, use_pred_node_embs, postprocess_method=None):
+    def forward(self, graph, teacher_forcing, training, use_pred_node_embs, postprocess_method=None):
         postprocess_method = self.get_postprocess_method(postprocess_method)
         node_embs = self.graph_ae.encoder(graph=graph)
         # detach node embs: dont backpropagate pi_vae back to node_emb encoder
         #node_embs_detached = node_embs.detach()
         node_embs_detached = node_embs + 0.05 * torch.randn_like(node_embs)
-        node_embs_pred = self.pi_ae(node_embs_detached, teacher_forcing_prob=teacher_forcing)
+        node_embs_pred = self.pi_ae(node_embs_detached, teacher_forcing_prob=teacher_forcing, training=training)
         if use_pred_node_embs:
             node_logits, adj_logits, mask_logits = self.graph_ae.decoder(node_embs=node_embs_pred)
         else:
@@ -120,7 +120,8 @@ class PLGraphAE(pl.LightningModule):
         nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(
             graph=sparse_graph,
             teacher_forcing=tf_prop,
-            use_pred_node_embs=False
+            use_pred_node_embs=False,
+            training=True
         )
         nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
         loss = self.critic(
@@ -143,7 +144,8 @@ class PLGraphAE(pl.LightningModule):
             graph=sparse_graph,
             teacher_forcing=tf_prop,
             postprocess_method=None,
-            use_pred_node_embs=False
+            use_pred_node_embs=False,
+            training=False
         )
         metrics_tf = self.critic.evaluate(
             nodes_true=nodes_true,
@@ -159,7 +161,8 @@ class PLGraphAE(pl.LightningModule):
             graph=sparse_graph,
             teacher_forcing=0.0,
             postprocess_method=None,
-            use_pred_node_embs=False
+            use_pred_node_embs=False,
+            training=False
         )
 
         metrics_no_tf = self.critic.evaluate(
@@ -177,7 +180,8 @@ class PLGraphAE(pl.LightningModule):
             graph=sparse_graph,
             teacher_forcing=tf_prop,
             use_pred_node_embs=True,
-            postprocess_method=None
+            postprocess_method=None,
+            training=False
         )
 
         metrics_dec_tf = self.critic.evaluate(
@@ -195,7 +199,8 @@ class PLGraphAE(pl.LightningModule):
             graph=sparse_graph,
             teacher_forcing=0.0,
             use_pred_node_embs=True,
-            postprocess_method=None
+            postprocess_method=None,
+            training=False
         )
 
         metrics_dec_no_tf = self.critic.evaluate(

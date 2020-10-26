@@ -119,4 +119,6 @@ CUDA_VISIBLE_DEVICES=7 python graphae/main.py -i 39 --batch_norm --lr 0.00005 -b
 CUDA_VISIBLE_DEVICES=8 python graphae/main.py -i 40 --batch_norm --lr 0.00005 -b 256 --alpha 1.0 --progress_bar
 # noise on enocded node embs
 CUDA_VISIBLE_DEVICES=9 python graphae/main.py -i 41 --batch_norm --lr 0.00005 -b 256 --alpha 1.0 --progress_bar
+# multinominal
+CUDA_VISIBLE_DEVICES=12 python graphae/main.py -i 42 --batch_norm --lr 0.00005 -b 256 --alpha 1.0 --progress_bar
 
