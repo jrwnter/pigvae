@@ -47,7 +47,8 @@ class Critic(torch.nn.Module):
             node_emb_dec=node_emb_dec
         )
         loss = {**recon_loss, "node_emb_matching_loss": node_emb_matching_loss}
-        loss["loss"] += self.alpha * loss["node_emb_matching_loss"]
+        #loss["loss"] += self.alpha * loss["node_emb_matching_loss"]
+        loss["loss"] = loss["node_emb_matching_loss"]
 
         return loss
 

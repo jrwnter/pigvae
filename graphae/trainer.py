@@ -45,8 +45,8 @@ class PLGraphAE(pl.LightningModule):
         postprocess_method = self.get_postprocess_method(postprocess_method)
         node_embs = self.graph_ae.encoder(graph=graph)
         # detach node embs: dont backpropagate pi_vae back to node_emb encoder
-        #node_embs_detached = node_embs.detach()
-        node_embs_detached = node_embs + 0.05 * torch.randn_like(node_embs)
+        node_embs_detached = node_embs.detach()
+        node_embs = node_embs + 0.05 * torch.randn_like(node_embs)
         node_embs_pred = self.pi_ae(node_embs_detached, teacher_forcing_prob=teacher_forcing, training=training)
         if use_pred_node_embs:
             node_logits, adj_logits, mask_logits = self.graph_ae.decoder(node_embs=node_embs_pred)
