@@ -27,14 +27,12 @@ MASK_POS_WEIGHT = torch.Tensor([0.1214])
 
 
 class Critic(torch.nn.Module):
-    def __init__(self, alpha=1):
+    def __init__(self):
         super().__init__()
         self.reconstruction_loss = GraphReconstructionLoss()
-        self.node_emb_matching_loss = NodeEmbMatchingLoss()
-        self.alpha = alpha
 
-    def forward(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec):
-        recon_loss = self.reconstruction_loss(
+    def forward(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred):
+        loss = self.reconstruction_loss(
             nodes_true=nodes_true,
             adj_true=adj_true,
             mask_true=mask_true,
@@ -42,18 +40,10 @@ class Critic(torch.nn.Module):
             adj_pred=adj_pred,
             mask_pred=mask_pred
         )
-        node_emb_matching_loss = self.node_emb_matching_loss(
-            node_emb_enc=node_emb_enc,
-            node_emb_dec=node_emb_dec
-        )
-        loss = {**recon_loss, "node_emb_matching_loss": node_emb_matching_loss}
-        #loss["loss"] += self.alpha * loss["node_emb_matching_loss"]
-        loss["loss"] = loss["node_emb_matching_loss"]
 
         return loss
 
-    def evaluate(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred,
-                 node_emb_enc, node_emb_dec, prefix=None):
+    def evaluate(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, prefix=None):
         loss = self(
             nodes_true=nodes_true,
             adj_true=adj_true,
@@ -61,8 +51,6 @@ class Critic(torch.nn.Module):
             nodes_pred=nodes_pred,
             adj_pred=adj_pred,
             mask_pred=mask_pred,
-            node_emb_enc=node_emb_enc,
-            node_emb_dec=node_emb_dec,
         )
         element_type_acc, charge_type_acc, hybridization_type_acc = node_balanced_accuracy(
             nodes_pred=nodes_pred,
@@ -146,37 +134,6 @@ class GraphReconstructionLoss(torch.nn.Module):
             "node_loss": node_loss,
             "loss": total_loss
         }
-        return loss
-
-
-"""class NodeEmbMatchingLoss(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.loss = TripletMarginLoss()
-
-    def forward(self, node_emb_enc, node_emb_dec, eps=10e-10):
-        batch_size = node_emb_enc.size(0)
-        num_nodes = node_emb_enc.size(1)
-        dm = torch.norm(node_emb_enc.unsqueeze(1) - node_emb_dec.unsqueeze(2), dim=-1)
-        dia = torch.diagonal(dm, 0, dim1=1, dim2=2)  # [batch_size, num_nodes]
-        off_dia_mean = dm.masked_fill(torch.eye(num_nodes).view(1, num_nodes, num_nodes).repeat(batch_size, 1, 1).type_as(dm).bool(), 0)
-        off_dia_mean = off_dia_mean.mean(dim=-1)
-        #print(dia_sum.shape, off_dia_mean.shape)
-        loss = dia / (off_dia_mean + eps)
-        loss = loss.mean()
-        return loss"""
-
-
-class NodeEmbMatchingLoss(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.loss = MSELoss()
-
-    def forward(self, node_emb_enc, node_emb_dec):
-        loss = self.loss(
-            input=node_emb_dec,
-            target=node_emb_enc
-        )
         return loss
 
 

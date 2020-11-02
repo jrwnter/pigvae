@@ -1,6 +1,6 @@
 import os
 DEFAULT_DATA_PATH = "/home/ggwaq/projects/graph_vae/smiles_atom_count2.csv"
-DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves7")
+DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves8")
 
 
 def add_arguments(parser):
@@ -32,6 +32,7 @@ def add_arguments(parser):
     parser.add_argument("--lr_scheduler_cooldown", default=5, type=int)
     parser.add_argument("--alpha", default=1.0, type=float)
     parser.add_argument("--start_tf_prop", default=0.9, type=float)
+    parser.add_argument("--emb_noise", default=0.05, type=float)
     parser.add_argument("--vae", dest='vae', action='store_true')
     parser.set_defaults(vae=False)
 
@@ -45,7 +46,7 @@ def add_arguments(parser):
     parser.add_argument("--nonlin", default="lrelu", type=str)
 
     # GRAPH ENCODER
-    parser.add_argument("--node_dim", default=256, type=int)
+    parser.add_argument("--node_dim", default=32, type=int)
     parser.add_argument("--graph_encoder_hidden_dim_gnn", default=1024, type=int)
     parser.add_argument("--graph_encoder_hidden_dim_fnn", default=1024, type=int)
     parser.add_argument("--graph_encoder_num_layers_gnn", default=7, type=int)
@@ -62,18 +63,6 @@ def add_arguments(parser):
 
     parser.add_argument("--postprocess_method", default=0, type=int)
     parser.add_argument("--postprocess_temp", default=1.0, type=float)
-
-    # PI ENCODER
-    parser.add_argument("--emb_dim", default=512, type=int)
-    parser.add_argument("--pi_encoder_hidden_dim", default=2048, type=int)
-    parser.add_argument("--pi_encoder_num_layers", default=4, type=int)
-    parser.add_argument("--pi_encoder_p_steps", default=5, type=int)
-
-    # PI DECODER
-    parser.add_argument("--pi_decoder_hidden_dim_fnn", default=2048, type=int)
-    parser.add_argument("--pi_decoder_hidden_dim_rnn", default=1024, type=int)
-    parser.add_argument("--pi_decoder_num_layers_fnn", default=3, type=int)
-    parser.add_argument("--pi_decoder_num_layers_rnn", default=3, type=int)
 
 
     # DATA

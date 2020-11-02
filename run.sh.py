@@ -122,3 +122,13 @@ CUDA_VISIBLE_DEVICES=9 python graphae/main.py -i 41 --batch_norm --lr 0.00005 -b
 # multinominal
 CUDA_VISIBLE_DEVICES=12 python graphae/main.py -i 42 --batch_norm --lr 0.00005 -b 256 --alpha 1.0 --progress_bar
 
+
+# stand alone GVAE saves 8
+CUDA_VISIBLE_DEVICES=0 python graphae/main.py -i 1 --batch_norm --lr 0.0001 -b 256  --progress_bar
+CUDA_VISIBLE_DEVICES=1 python graphae/main.py -i 2 --batch_norm --lr 0.0001 -b 256  --node_dim 16 &
+CUDA_VISIBLE_DEVICES=2 python graphae/main.py -i 3 --batch_norm --lr 0.0001 -b 256  --node_dim 8 &
+CUDA_VISIBLE_DEVICES=3 python graphae/main.py -i 4 --batch_norm --lr 0.0001 -b 256  --node_dim 4 &
+CUDA_VISIBLE_DEVICES=4 python graphae/main.py -i 5 --batch_norm --lr 0.0001 -b 256  --node_dim 2 &
+CUDA_VISIBLE_DEVICES=5 python graphae/main.py -i 6 --batch_norm --lr 0.0001 -b 256  --node_dim 4 --emb_noise 0.1 &
+CUDA_VISIBLE_DEVICES=6 python graphae/main.py -i 7 --batch_norm --lr 0.0001 -b 256  --node_dim 4 --emb_noise 0.1 --max_num_nodes 32&
+

@@ -1,4 +1,5 @@
 import torch
+from torch.nn import Linear
 from graphae import encoder, decoder
 
 
@@ -20,8 +21,10 @@ class GraphEncoder(torch.nn.Module):
             stack_node_emb=hparams["stack_node_emb"]
         )
 
-    def forward(self, graph):
+    def forward(self, graph, noise=None):
         node_embs = self.encoder(graph)
+        if noise is not None:
+            node_embs = node_embs + noise * torch.randn_like(node_embs)
         node_embs = node_embs_to_dense(
             node_embs=node_embs,
             num_nodes=self.num_nodes,
@@ -65,8 +68,8 @@ class GraphAE(torch.nn.Module):
         self.encoder = GraphEncoder(hparams)
         self.decoder = GraphDecoder(hparams)
 
-    def forward(self, graph, postprocess_method=None):
-        node_embs = self.encoder(graph=graph)
+    def forward(self, graph, postprocess_method=None, noise=None):
+        node_embs = self.encoder(graph=graph, noise=noise)
         node_logits, adj_logits, mask_logits = self.decoder(node_embs=node_embs)
         if postprocess_method is not None:
             node_logits, adj_logits = self.postprocess_logits(
@@ -104,10 +107,7 @@ class GraphAE(torch.nn.Module):
         return nodes, adj
 
 
-def reparameterize(mu, logvar):
-    std = torch.exp(0.5 * logvar)
-    eps = torch.randn_like(std)
-    return mu + eps * std
+
 
 
 def node_embs_to_dense(node_embs, num_nodes, batch_idxs):
