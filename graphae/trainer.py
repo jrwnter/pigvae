@@ -4,7 +4,7 @@ from torch_geometric.data import DataLoader
 from graphae.graph_ae import GraphAE
 from graphae.data import MolecularGraphDatasetFromSmiles, batch_to_dense
 from graphae.metrics import *
-from pivae.pivae import PIVAE
+from pivae.vae import PIVAE
 from time import time
 
 
@@ -14,6 +14,7 @@ class PLGraphAE(pl.LightningModule):
         super().__init__()
         hparams["max_num_elements"] = hparams["max_num_nodes"]
         hparams["element_dim"] = hparams["node_dim"]
+        hparams["element_emb_dim"] = 2 * hparams["node_dim"]
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
         self.pi_ae = PIVAE(hparams)
@@ -42,7 +43,7 @@ class PLGraphAE(pl.LightningModule):
     def forward(self, graph, teacher_forcing, training, use_pred_node_embs, postprocess_method=None):
         postprocess_method = self.get_postprocess_method(postprocess_method)
         node_embs = self.graph_ae.encode(graph=graph)
-        node_embs_pred = self.pi_ae(node_embs, teacher_forcing_prob=teacher_forcing, training=training)
+        node_embs_pred, _ = self.pi_ae(node_embs, teacher_forcing_prob=teacher_forcing, training=training)
         if use_pred_node_embs:
             node_logits, adj_logits, mask_logits = self.graph_ae.decoder(node_embs=node_embs_pred)
         else:
@@ -91,13 +92,13 @@ class PLGraphAE(pl.LightningModule):
             optimizer=optimizer,
             factor=0.5,
             patience=10,
-            cooldown=30,
+            cooldown=50,
             min_lr=1e-6,
         )
         scheduler = {
             'scheduler': lr_scheduler,
             'interval': 'step',
-            'monitor': 'val_loss',
+            'monitor': 'val_no_tf_loss',
             'frequency': self.hparams["eval_freq"] + 1
         }
         return [optimizer], [scheduler]
@@ -106,7 +107,7 @@ class PLGraphAE(pl.LightningModule):
         sparse_graph, dense_graph = batch[0], batch[1]
         tf_prop = self.tf_scheduler.tf_prop
         self.log("tf_prop", tf_prop)
-        nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(
+        nodes_pred, adj_pred, mask_pred = self(
             graph=sparse_graph,
             teacher_forcing=tf_prop,
             use_pred_node_embs=True,
@@ -121,13 +122,14 @@ class PLGraphAE(pl.LightningModule):
             adj_pred=adj_pred,
             mask_pred=mask_pred,
         )
+        self.log("loss", loss["loss"])
         return loss
 
     def validation_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
         tf_prop = self.tf_scheduler.tf_prop
         nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
-        nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(
+        nodes_pred, adj_pred, mask_pred = self(
             graph=sparse_graph,
             teacher_forcing=tf_prop,
             postprocess_method=None,
@@ -141,8 +143,9 @@ class PLGraphAE(pl.LightningModule):
             nodes_pred=nodes_pred,
             adj_pred=adj_pred,
             mask_pred=mask_pred,
+            prefix="val_tf"
         )
-        nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(
+        nodes_pred, adj_pred, mask_pred = self(
             graph=sparse_graph,
             teacher_forcing=0.0,
             postprocess_method=None,
@@ -157,7 +160,7 @@ class PLGraphAE(pl.LightningModule):
             nodes_pred=nodes_pred,
             adj_pred=adj_pred,
             mask_pred=mask_pred,
-            prefix="no_tf"
+            prefix="val_no_tf"
         )
         """nodes_pred, adj_pred, mask_pred, node_emb_enc, node_emb_dec = self(
             graph=sparse_graph,
@@ -201,8 +204,7 @@ class PLGraphAE(pl.LightningModule):
         for key in outputs[0].keys():
             out[key] = torch.stack([output[key] for output in outputs]).mean()
         for metric, value in out.items():
-            prog_bar = True if metric == "loss" else False
-            self.log(metric, value, prog_bar=prog_bar)
+            self.log(metric, value)
 
     def on_validation_epoch_end(self):
         self.tf_scheduler()
@@ -217,8 +219,9 @@ class TeacherForcingScheduler(object):
 
     def __call__(self):
         self.steps += 1
-        if self.step_size >= self.steps:
+        if self.steps >= self.steps:
             self.tf_prop *= self.factor
+            self.steps = 0
 
 
 class TeacherForcingScheduler2(object):

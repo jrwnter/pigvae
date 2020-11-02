@@ -132,3 +132,30 @@ CUDA_VISIBLE_DEVICES=4 python graphae/main.py -i 5 --batch_norm --lr 0.0001 -b 2
 CUDA_VISIBLE_DEVICES=5 python graphae/main.py -i 6 --batch_norm --lr 0.0001 -b 256  --node_dim 4 --emb_noise 0.1 &
 CUDA_VISIBLE_DEVICES=6 python graphae/main.py -i 7 --batch_norm --lr 0.0001 -b 256  --node_dim 4 --emb_noise 0.1 --max_num_nodes 32&
 
+saves 9
+
+CUDA_VISIBLE_DEVICES=6 python graphae/main.py -i 1 --batch_norm  --progress_bar
+CUDA_VISIBLE_DEVICES=8 python graphae/main.py -i 2 --batch_norm  --lr 0.00005 -b 256 &
+# linear trans2
+CUDA_VISIBLE_DEVICES=9 python graphae/main.py -i 3 --batch_norm  --lr 0.00005 -b 256 &
+# again inverse
+CUDA_VISIBLE_DEVICES=10 python graphae/main.py -i 4 --batch_norm  --lr 0.00005 -b 256 --emb_dim 512 &
+CUDA_VISIBLE_DEVICES=11 python graphae/main.py -i 5 --batch_norm  --lr 0.00005 -b 256 --emb_dim 512 --node_dim 128 &
+CUDA_VISIBLE_DEVICES=12 python graphae/main.py -i 6 --batch_norm  --lr 0.00005 -b 256 --emb_dim 512 --node_dim 256 &
+CUDA_VISIBLE_DEVICES=13 python graphae/main.py -i 7 --batch_norm  --lr 0.00005 -b 256 --emb_dim 1024 --node_dim 256 &
+CUDA_VISIBLE_DEVICES=0 python graphae/main.py -i 8 --batch_norm  --lr 0.00005 -b 256 --emb_dim 1024 --node_dim 512 &
+CUDA_VISIBLE_DEVICES=1 python graphae/main.py -i 9 --batch_norm  --lr 0.00005 -b 256 --emb_dim 1024 --node_dim 512 --pi_encoder_hidden_dim 2048 --pi_decoder_hidden_dim_fnn 2048 &
+# no gumble
+CUDA_VISIBLE_DEVICES=2 python graphae/main.py -i 10 --batch_norm  --lr 0.00005 -b 256 --emb_dim 512 --node_dim 128 &
+# gumble again, element_emb_dim=8xnode_emb_dim
+CUDA_VISIBLE_DEVICES=3 python graphae/main.py -i 11 --batch_norm  --lr 0.00005 -b 256 --emb_dim 1024 --node_dim 128 &
+CUDA_VISIBLE_DEVICES=4 python graphae/main.py -i 12 --batch_norm  --lr 0.00005 -b 256 --emb_dim 1024 --node_dim 128 --start_tf 0.0 &
+# no gumble
+CUDA_VISIBLE_DEVICES=5 python graphae/main.py -i 13 --batch_norm  --lr 0.00005 -b 256 --emb_dim 1024 --node_dim 128 --start_tf 0.0 &
+# fixed tf decy + no gumble 2x element_emb
+CUDA_VISIBLE_DEVICES=8 python graphae/main.py -i 14 --batch_norm  --lr 0.00005 -b 256 --emb_dim 1024 --node_dim 512 &
+#old decoder
+CUDA_VISIBLE_DEVICES=9 python graphae/main.py -i 15 --batch_norm  --lr 0.00005 -b 64 --emb_dim 512 --node_dim 256 &
+
+
+
