@@ -1,5 +1,5 @@
 import torch
-from torch.nn import Linear
+from torch.nn import Linear, Parameter
 from graphae import encoder, decoder
 
 
@@ -25,11 +25,6 @@ class GraphEncoder(torch.nn.Module):
         node_embs = self.encoder(graph)
         if noise is not None:
             node_embs = node_embs + noise * torch.randn_like(node_embs)
-        node_embs = node_embs_to_dense(
-            node_embs=node_embs,
-            num_nodes=self.num_nodes,
-            batch_idxs=graph.batch
-        )
         return node_embs
 
 
@@ -67,9 +62,20 @@ class GraphAE(torch.nn.Module):
         super().__init__()
         self.encoder = GraphEncoder(hparams)
         self.decoder = GraphDecoder(hparams)
+        self.node_dim = hparams["node_dim"]
+        self.num_nodes = hparams["max_num_nodes"]
+        self.empty_node = Parameter(torch.randn(self.node_dim))
+
+    def encode(self, graph):
+        node_embs = self.encoder(graph=graph, noise=None)
+        node_embs = self.node_embs_to_dense(
+            node_embs=node_embs,
+            batch_idxs=graph.batch
+        )
+        return node_embs
 
     def forward(self, graph, postprocess_method=None, noise=None):
-        node_embs = self.encoder(graph=graph, noise=noise)
+        node_embs = self.encode(graph=graph)
         node_logits, adj_logits, mask_logits = self.decoder(node_embs=node_embs)
         if postprocess_method is not None:
             node_logits, adj_logits = self.postprocess_logits(
@@ -78,6 +84,21 @@ class GraphAE(torch.nn.Module):
                 method=postprocess_method,
             )
         return node_logits, adj_logits, mask_logits
+
+    # TODO: Learn placeholder, not zero. Better for kld loss?
+    def node_embs_to_dense(self, node_embs, batch_idxs):
+        batch_size = batch_idxs.max().item() + 1
+        device = node_embs.device
+        mask = torch.where(
+            torch.arange(self.num_nodes, device=device).unsqueeze(0) < torch.bincount(batch_idxs).unsqueeze(1),
+            torch.ones(batch_size, self.num_nodes, device=device),
+            torch.zeros(batch_size, self.num_nodes, device=device)
+        ).bool().view(batch_size, self.num_nodes, 1).repeat(1, 1, self.node_dim)
+
+        node_embs_dense = self.empty_node.view(1, 1, -1).repeat(batch_size, self.num_nodes, 1)
+        node_embs_dense = node_embs_dense.masked_scatter_(mask, node_embs)
+
+        return node_embs_dense
 
     @staticmethod
     def postprocess_logits(node_logits, adj_logits, method=None, temp=1.0):

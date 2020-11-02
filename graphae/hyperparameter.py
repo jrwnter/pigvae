@@ -30,6 +30,8 @@ def add_arguments(parser):
     parser.add_argument("--lr_scheduler_factor", default=0.5, type=float)
     parser.add_argument("--lr_scheduler_patience", default=2, type=int)
     parser.add_argument("--lr_scheduler_cooldown", default=5, type=int)
+    parser.add_argument("--tf_decay_factor", default=0.9, type=float)
+    parser.add_argument("--tf_decay_freq", default=20, type=int)
     parser.add_argument("--alpha", default=1.0, type=float)
     parser.add_argument("--start_tf_prop", default=0.9, type=float)
     parser.add_argument("--emb_noise", default=0.05, type=float)
