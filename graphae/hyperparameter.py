@@ -68,7 +68,7 @@ def add_arguments(parser):
 
     # PI ENCODER
     parser.add_argument("--emb_dim", default=32, type=int)
-    #parser.add_argument("--element_emb_dim", default=32, type=int)
+    parser.add_argument("--element_emb_dim", default=32, type=int)
     parser.add_argument("--pi_encoder_hidden_dim", default=1024, type=int)
     parser.add_argument("--pi_encoder_num_layers", default=3, type=int)
     parser.add_argument("--pi_encoder_p_steps", default=5, type=int)
@@ -78,6 +78,7 @@ def add_arguments(parser):
     parser.add_argument("--pi_decoder_hidden_dim_rnn", default=1024, type=int)
     parser.add_argument("--pi_decoder_num_layers_fnn", default=3, type=int)
     parser.add_argument("--pi_decoder_num_layers_rnn", default=3, type=int)
+    parser.add_argument("--pi_decoder_gumbel_tau", default=1.0, type=float)
 
 
     # DATA

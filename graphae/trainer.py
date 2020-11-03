@@ -14,15 +14,17 @@ class PLGraphAE(pl.LightningModule):
         super().__init__()
         hparams["max_num_elements"] = hparams["max_num_nodes"]
         hparams["element_dim"] = hparams["node_dim"]
-        hparams["element_emb_dim"] = 2 * hparams["node_dim"]
+        hparams["element_emb_dim"] = hparams["node_dim"]
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
         self.pi_ae = PIVAE(hparams)
         self.critic = Critic()
-        self.tf_scheduler = TeacherForcingScheduler(
+        self.tf_scheduler = TeacherForcingScheduler2(
             start_value=self.hparams["start_tf"],
+            target_metric_value=0.99,
             factor=self.hparams["tf_decay_factor"],
-            step_size=self.hparams["tf_decay_freq"],
+            patience=5,
+            cooldown=5
         )
 
     def get_postprocess_method(self, postprocess_method):
@@ -88,7 +90,7 @@ class PLGraphAE(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.graph_ae.parameters(), lr=self.hparams["lr"])
-        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        """lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
             factor=0.5,
             patience=10,
@@ -100,6 +102,15 @@ class PLGraphAE(pl.LightningModule):
             'interval': 'step',
             'monitor': 'val_no_tf_loss',
             'frequency': self.hparams["eval_freq"] + 1
+        }"""
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer=optimizer,
+            step_size=1,
+            gamma=0.5
+        )
+        scheduler = {
+            'scheduler': lr_scheduler,
+            'interval': 'epoch',
         }
         return [optimizer], [scheduler]
 
@@ -205,9 +216,7 @@ class PLGraphAE(pl.LightningModule):
             out[key] = torch.stack([output[key] for output in outputs]).mean()
         for metric, value in out.items():
             self.log(metric, value)
-
-    def on_validation_epoch_end(self):
-        self.tf_scheduler()
+        self.tf_scheduler(out["val_tf_adj_acc"])
 
 
 class TeacherForcingScheduler(object):
