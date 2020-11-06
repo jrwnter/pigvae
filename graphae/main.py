@@ -21,7 +21,7 @@ def main(hparams):
     checkpoint_callback = ModelCheckpoint(
         filepath=hparams.save_dir + "/run{}/".format(hparams.id),
         save_top_k=1,
-        monitor="val_no_tf_loss",
+        monitor="val_loss",
         save_last=True
     )
     lr_logger = LearningRateMonitor()
@@ -38,7 +38,7 @@ def main(hparams):
         callbacks=[lr_logger],
         profiler=True,
         terminate_on_nan=True,
-        #resume_from_checkpoint="saves7/run{}/{}_last.ckpt".format(hparams.id, hparams.id)
+        resume_from_checkpoint="saves9/run{}/last.ckpt".format(hparams.id, hparams.id)
     )
     trainer.fit(model)
 
