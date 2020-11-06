@@ -47,7 +47,7 @@ class PLGraphAE(pl.LightningModule):
         scheduler = {
             'scheduler': lr_scheduler,
             'interval': 'step',
-            'monitor': 'val_adj_accuracy',
+            'monitor': 'loss',
             'frequency': self.hparams["eval_freq"] + 1
         }
         return [optimizer], [scheduler]
