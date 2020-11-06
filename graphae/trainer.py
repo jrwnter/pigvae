@@ -19,12 +19,18 @@ class PLGraphAE(pl.LightningModule):
         self.graph_ae = GraphAE(hparams)
         self.pi_ae = PIVAE(hparams)
         self.critic = Critic()
-        self.tf_scheduler = TeacherForcingScheduler2(
-            start_value=self.hparams["start_tf"],
-            target_metric_value=0.99,
-            factor=self.hparams["tf_decay_factor"],
+        """self.tf_scheduler = TeacherForcingScheduler3(
             patience=5,
-            cooldown=5
+        )"""
+        self.tf_scheduler = TeacherForcingScheduler(
+            start_value=0.0,
+            factor=0.1,
+            step_size=1,
+        )
+        self.tau_scheduler = TauScheduler(
+            start_value=1.0,
+            factor=0.75,
+            step_size=1
         )
 
     def get_postprocess_method(self, postprocess_method):
@@ -42,10 +48,10 @@ class PLGraphAE(pl.LightningModule):
                 raise NotImplementedError
         return postprocess_method
 
-    def forward(self, graph, teacher_forcing, training, use_pred_node_embs, postprocess_method=None):
+    def forward(self, graph, teacher_forcing, training, tau, use_pred_node_embs, postprocess_method=None):
         postprocess_method = self.get_postprocess_method(postprocess_method)
         node_embs = self.graph_ae.encode(graph=graph)
-        node_embs_pred, _ = self.pi_ae(node_embs, teacher_forcing_prob=teacher_forcing, training=training)
+        node_embs_pred, _ = self.pi_ae(node_embs, teacher_forcing_prob=teacher_forcing, training=training, tau=tau)
         if use_pred_node_embs:
             node_logits, adj_logits, mask_logits = self.graph_ae.decoder(node_embs=node_embs_pred)
         else:
@@ -105,7 +111,7 @@ class PLGraphAE(pl.LightningModule):
         }"""
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer=optimizer,
-            step_size=1,
+            step_size=2,
             gamma=0.5
         )
         scheduler = {
@@ -117,12 +123,15 @@ class PLGraphAE(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
         tf_prop = self.tf_scheduler.tf_prop
+        tau = self.tau_scheduler.tau
         self.log("tf_prop", tf_prop)
+        self.log("tau", tau)
         nodes_pred, adj_pred, mask_pred = self(
             graph=sparse_graph,
             teacher_forcing=tf_prop,
             use_pred_node_embs=True,
-            training=True
+            training=True,
+            tau=tau
         )
         nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
         loss = self.critic(
@@ -139,13 +148,15 @@ class PLGraphAE(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
         tf_prop = self.tf_scheduler.tf_prop
+        tau = self.tau_scheduler.tau
         nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
         nodes_pred, adj_pred, mask_pred = self(
             graph=sparse_graph,
             teacher_forcing=tf_prop,
             postprocess_method=None,
             use_pred_node_embs=True,
-            training=False
+            training=False,
+            tau=tau
         )
         metrics_tf = self.critic.evaluate(
             nodes_true=nodes_true,
@@ -161,7 +172,8 @@ class PLGraphAE(pl.LightningModule):
             teacher_forcing=0.0,
             postprocess_method=None,
             use_pred_node_embs=True,
-            training=False
+            training=False,
+            tau=tau
         )
 
         metrics_no_tf = self.critic.evaluate(
@@ -216,7 +228,10 @@ class PLGraphAE(pl.LightningModule):
             out[key] = torch.stack([output[key] for output in outputs]).mean()
         for metric, value in out.items():
             self.log(metric, value)
-        self.tf_scheduler(out["val_tf_adj_acc"])
+        #self.tf_scheduler(out["val_tf_adj_acc"])
+
+    def on_epoch_end(self):
+        self.tau_scheduler()
 
 
 class TeacherForcingScheduler(object):
@@ -228,7 +243,7 @@ class TeacherForcingScheduler(object):
 
     def __call__(self):
         self.steps += 1
-        if self.steps >= self.steps:
+        if self.steps >= self.step_size:
             self.tf_prop *= self.factor
             self.steps = 0
 
@@ -255,3 +270,34 @@ class TeacherForcingScheduler2(object):
             self.num_steps_below = 0
 
 
+class TeacherForcingScheduler3(object):
+    def __init__(self, patience=0):
+        self.tf_prop = 1.0
+        self.patience = patience
+        self.num_steps_below = 0
+        self.target_metric_value_list = [0.8, 0.9, 0.95, 0.98, 0.99, 1.0]
+        self.tf_prop_list = [0.8, 0.5, 0.25, 0.1, 0.0, 0.0]
+        self.level = 0
+
+    def __call__(self, metric):
+        if metric >= self.target_metric_value_list[self.level]:
+            self.num_steps_below += 1
+            if self.num_steps_below >= self.patience:
+                self.tf_prop = self.tf_prop_list[self.level]
+                self.level += 1
+        else:
+            self.num_steps_below = 0
+
+
+class TauScheduler(object):
+    def __init__(self, start_value, factor, step_size):
+        self.tau = start_value
+        self.factor = factor
+        self.step_size = step_size
+        self.steps = 0
+
+    def __call__(self):
+        self.steps += 1
+        if self.steps >= self.step_size:
+            self.tau *= self.factor
+            self.steps = 0

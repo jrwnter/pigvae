@@ -127,25 +127,6 @@ class GraphAE(torch.nn.Module):
         adj = torch.zeros(adj_shape).type_as(adj).scatter_(3, adj, 1)
         return nodes, adj
 
-
-
-
-
-def node_embs_to_dense(node_embs, num_nodes, batch_idxs):
-    num_features = node_embs.shape[-1]
-    batch_size = batch_idxs.max().item() + 1
-    device = node_embs.device
-    mask = torch.where(
-        torch.arange(num_nodes, device=device).unsqueeze(0) < torch.bincount(batch_idxs).unsqueeze(1),
-        torch.ones(batch_size, num_nodes, device=device),
-        torch.zeros(batch_size, num_nodes, device=device)
-    ).bool().view(batch_size, num_nodes, 1).repeat(1, 1, num_features)
-    node_embs_dense = torch.zeros(
-        [batch_size, num_nodes, num_features],
-        device=device).masked_scatter_(mask, node_embs)
-    return node_embs_dense
-
-
 def postprocess(logits, method, temperature=1.):
     if method == 'soft_gumbel':
         out = torch.nn.functional.gumbel_softmax(

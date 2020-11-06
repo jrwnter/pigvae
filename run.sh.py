@@ -178,6 +178,33 @@ CUDA_VISIBLE_DEVICES=10 python graphae/main.py -i 25 --batch_norm  --lr 0.00005 
 # decay on 0.99
 CUDA_VISIBLE_DEVICES=1 python graphae/main.py -i 26 --batch_norm  --lr 0.00005 -b 256 --emb_dim 1024 --node_dim 512 &
 CUDA_VISIBLE_DEVICES=3 python graphae/main.py -i 28 --batch_norm  --lr 0.00005 -b 256 --emb_dim 1024 --node_dim 512 --pi_decoder_gumbel_tau 0.1 &
+CUDA_VISIBLE_DEVICES=4 python graphae/main.py -i 29 --batch_norm  --lr 0.00005 -b 256 --emb_dim 1024 --node_dim 512 --pi_decoder_gumbel_tau 0.2 &
+CUDA_VISIBLE_DEVICES=11 python graphae/main.py -i 30 --batch_norm  --lr 0.00005 -b 256 --emb_dim 1024 --node_dim 512 --pi_decoder_gumbel_tau 0.5 &
+CUDA_VISIBLE_DEVICES=12 python graphae/main.py -i 31 --batch_norm  --lr 0.00005 -b 256 --emb_dim 1024 --node_dim 512 --pi_decoder_gumbel_tau 0.5 --pi_encoder_hidden_dim 2048 &
+CUDA_VISIBLE_DEVICES=13 python graphae/main.py -i 32 --batch_norm  --lr 0.00005 -b 256 --emb_dim 1024 --node_dim 512 --pi_decoder_gumbel_tau 0.5 --pi_decoder_hidden_dim_rnn 2048 &
+CUDA_VISIBLE_DEVICES=0 python graphae/main.py -i 33 --batch_norm  --lr 0.00005 -b 256 --emb_dim 1024 --node_dim 512 --pi_decoder_gumbel_tau 0.5 --pi_encoder_num_layers 5 &
+# decoder layer norm rnn, decay lr every 2 epochs
+CUDA_VISIBLE_DEVICES=2 python graphae/main.py -i 34 --batch_norm  --lr 0.00005 -b 256 --emb_dim 1024 --node_dim 512 --pi_decoder_gumbel_tau 0.5 &
+# encoder layer norm rnn too
+CUDA_VISIBLE_DEVICES=7 python graphae/main.py -i 35 --batch_norm  --lr 0.00005 -b 256 --emb_dim 1024 --node_dim 512 --pi_decoder_gumbel_tau 0.5 &
+# no layer norm
+CUDA_VISIBLE_DEVICES=2 python graphae/main.py -i 36 --batch_norm  --lr 0.0001 -b 256 --emb_dim 1024 --node_dim 512 --pi_decoder_gumbel_tau 0.5 &
+CUDA_VISIBLE_DEVICES=7 python graphae/main.py -i 37 --batch_norm  --lr 0.0001 -b 256 --emb_dim 2048 --node_dim 512 --pi_decoder_gumbel_tau 0.5 &
+CUDA_VISIBLE_DEVICES=10 python graphae/main.py -i 38 --batch_norm  --lr 0.00025 -b 256 --emb_dim 2048 --node_dim 512 --pi_decoder_gumbel_tau 0.5 &
+CUDA_VISIBLE_DEVICES=3 python graphae/main.py -i 39 --batch_norm  --lr 0.0001 -b 256 --emb_dim 4096 --node_dim 512 --pi_decoder_gumbel_tau 0.5 &
+CUDA_VISIBLE_DEVICES=14 python graphae/main.py -i 40 --batch_norm  --lr 0.00025 -b 256 --emb_dim 2048 --node_dim 1024 --pi_decoder_gumbel_tau 0.5 &
+# TF DECAY 3
+CUDA_VISIBLE_DEVICES=0 python graphae/main.py -i 41 --batch_norm  --lr 0.00025 -b 256 --emb_dim 2048 --node_dim 1024 --pi_decoder_gumbel_tau 0.5 &
+# DDS Encoder
+CUDA_VISIBLE_DEVICES=4 python graphae/main.py -i 42 --batch_norm  --lr 0.00025 -b 256 --emb_dim 2048 --node_dim 1024 --pi_decoder_gumbel_tau 0.5 --pi_encoder_hidden_dim 4096 &
+CUDA_VISIBLE_DEVICES=11 python graphae/main.py -i 43 --batch_norm  --lr 0.0001 -b 256 --emb_dim 2048 --node_dim 1024 --pi_decoder_gumbel_tau 0.5 --pi_encoder_hidden_dim 4096 &
+CUDA_VISIBLE_DEVICES=12 python graphae/main.py -i 44 --batch_norm  --lr 0.0001 -b 256 --emb_dim 2048 --node_dim 1024 --pi_decoder_gumbel_tau 0.5 --pi_encoder_hidden_dim 4096 --pi_encoder_num_layers 5 &
+# tau decay
+CUDA_VISIBLE_DEVICES=4 python graphae/main.py -i 45 --batch_norm  --lr 0.0001 -b 256 --emb_dim 2048 --node_dim 1024 --pi_decoder_gumbel_tau 0.5 --pi_encoder_hidden_dim 4096 &
+# no tf
+CUDA_VISIBLE_DEVICES=10 python graphae/main.py -i 46 --batch_norm  --lr 0.0001 -b 256 --emb_dim 2048 --node_dim 1024 --pi_decoder_gumbel_tau 0.5 --pi_encoder_hidden_dim 4096 &
+
+
 # with linear transform to higher element emb
 CUDA_VISIBLE_DEVICES=2 python graphae/main.py -i 27 --batch_norm  --lr 0.00005 -b 256 --emb_dim 1024 --node_dim 64 --element_emb_dim 1024 &
 
