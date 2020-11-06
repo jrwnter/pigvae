@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from sklearn.metrics import balanced_accuracy_score
 from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss, L1Loss, MSELoss, TripletMarginLoss
-
+from pytorch_lightning.metrics.classification import Recall, Precision, Accuracy
 
 # 32
 """ELEMENT_TYPE_WEIGHTS = torch.Tensor([
@@ -30,6 +30,21 @@ class Critic(torch.nn.Module):
     def __init__(self):
         super().__init__()
         self.reconstruction_loss = GraphReconstructionLoss()
+        self.element_type_recall = Recall(num_classes=11)
+        self.element_type_precision = Precision(num_classes=11)
+        self.element_type_accuracy = Accuracy()
+        self.charge_type_recall = Recall(num_classes=5)
+        self.charge_type_precision = Precision(num_classes=5)
+        self.charge_type_accuracy = Accuracy()
+        self.hybridization_type_recall = Recall(num_classes=7)
+        self.hybridization_type_precision = Precision(num_classes=7)
+        self.hybridization_type_accuracy = Accuracy()
+        self.mask_recall = Recall()
+        self.mask_precision = Precision()
+        self.mask_accuracy = Accuracy()
+        self.adj_recall = Recall(num_classes=5)
+        self.adj_precision = Precision(num_classes=5)
+        self.adj_accuracy = Accuracy()
 
     def forward(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred):
         loss = self.reconstruction_loss(
@@ -43,6 +58,64 @@ class Critic(torch.nn.Module):
 
         return loss
 
+    def node_metrics(self, nodes_pred, nodes_true, mask):
+        nodes_true, nodes_pred = nodes_true[mask], nodes_pred[mask]
+        element_type_true = torch.argmax(nodes_true[:, :11], axis=-1)
+        element_type_pred = torch.argmax(nodes_pred[:, :11], axis=-1)
+        charge_type_true = torch.argmax(nodes_true[:, 11:16], axis=-1)
+        charge_type_pred = torch.argmax(nodes_pred[:, 11:16], axis=-1)
+        hybridization_type_true = torch.argmax(nodes_true[:, 16:], axis=-1)
+        hybridization_type_pred = torch.argmax(nodes_pred[:, 16:], axis=-1)
+        metrics = {
+            "element_type_recall": self.element_type_recall(
+                preds=element_type_pred, target=element_type_true),
+            "element_type_precision": self.element_type_precision(
+                preds=element_type_pred, target=element_type_true),
+            "element_type_accuracy": self.element_type_accuracy(
+                preds=element_type_pred, target=element_type_true),
+            "charge_type_recall": self.charge_type_recall(
+                preds=charge_type_pred, target=charge_type_true),
+            "charge_type_precision":  self.charge_type_precision(
+                preds=charge_type_pred, target=charge_type_true),
+            "charge_type_accuracy": self.charge_type_accuracy(
+                preds=charge_type_pred, target=charge_type_true),
+            "hybridization_type_recall": self.hybridization_type_recall(
+                preds=hybridization_type_pred, target=hybridization_type_true),
+            "hybridization_type_precision": self.hybridization_type_precision(
+                preds=hybridization_type_pred, target=hybridization_type_true),
+            "hybridization_type_accuracy": self.hybridization_type_accuracy(
+                preds=hybridization_type_pred, target=hybridization_type_true)
+        }
+
+        return metrics
+
+    def mask_metrics(self, mask_pred, mask_true):
+        mask_true = mask_true.float().flatten()
+        mask_pred = mask_pred.flatten() > 0
+        mask_pred = mask_pred.long()
+        metrics = {
+            "mask_recall": self.mask_recall(
+                preds=mask_pred, target=mask_true),
+            "mask_precision": self.mask_precision(
+                preds=mask_pred, target=mask_true),
+            "mask_accuracy": self.mask_accuracy(
+                preds=mask_pred, target=mask_true),
+        }
+        return metrics
+
+    def adj_metrics(self, adj_pred, adj_true, mask):
+        adj_mask = mask.unsqueeze(1) * mask.unsqueeze(2)
+        adj_true, adj_pred = adj_true[adj_mask], adj_pred[adj_mask]
+        metrics = {
+            "adj_recall": self.adj_recall(
+                preds=adj_pred, target=adj_true),
+            "adj_precision": self.adj_precision(
+                preds=adj_pred, target=adj_true),
+            "adj_accuracy": self.adj_accuracy(
+                preds=adj_pred, target=adj_true),
+        }
+        return metrics
+
     def evaluate(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, prefix=None):
         loss = self(
             nodes_true=nodes_true,
@@ -52,35 +125,29 @@ class Critic(torch.nn.Module):
             adj_pred=adj_pred,
             mask_pred=mask_pred,
         )
-        element_type_acc, charge_type_acc, hybridization_type_acc = node_balanced_accuracy(
+        node_metrics = self.node_metrics(
             nodes_pred=nodes_pred,
             nodes_true=nodes_true,
             mask=mask_true
         )
-        adj_acc = adj_balanced_accuracy(
+        adj_metrics = self.adj_metrics(
             adj_pred=adj_pred,
             adj_true=adj_true,
             mask=mask_true
         )
-        mask_acc = mask_balenced_accuracy(
+        mask_metrics = self.mask_metrics(
             mask_pred=mask_pred,
             mask_true=mask_true
         )
-        output = {
-            **loss,
-            "element_type_acc": element_type_acc,
-            "charge_type_acc": charge_type_acc,
-            "hybridization_type_acc": hybridization_type_acc,
-            "adj_acc": adj_acc,
-            "mask_acc": mask_acc,
-        }
+        metrics = {**loss, **node_metrics, **adj_metrics, **mask_metrics}
+
         if prefix is not None:
-            output2 = {}
-            for key in output.keys():
+            metrics2 = {}
+            for key in metrics.keys():
                 new_key = prefix + "_" + str(key)
-                output2[new_key] = output[key]
-            output = output2
-        return output
+                metrics2[new_key] = metrics[key]
+            metrics = metrics2
+        return metrics
 
 
 class GraphReconstructionLoss(torch.nn.Module):
@@ -136,43 +203,3 @@ class GraphReconstructionLoss(torch.nn.Module):
         }
         return loss
 
-
-def scipy_balanced_accuracy(input, target):
-    device = input.device
-    if input.dim() == 2:
-        target = torch.argmax(target, axis=-1)
-        input = torch.argmax(input, axis=-1)
-    elif input.dim() > 2:
-        print(input.shape)
-        raise ValueError
-    target = target.cpu().numpy()
-    input = input.cpu().numpy()
-    acc = balanced_accuracy_score(y_true=target, y_pred=input)
-    acc = torch.from_numpy(np.array(acc)).to(device).float()
-    return acc
-
-
-def node_balanced_accuracy(nodes_pred, nodes_true, mask):
-    nodes_true, nodes_pred = nodes_true[mask], nodes_pred[mask]
-    element_type_true, element_type_pred = nodes_true[:, :11], nodes_pred[:, :11]
-    charge_type_true, charge_type_pred = nodes_true[:, 11:16], nodes_pred[:, 11:16]
-    hybridization_type_true, hybridization_type_pred = nodes_true[:, 16:], nodes_pred[:, 16:]
-    element_type_acc = scipy_balanced_accuracy(element_type_pred, element_type_true)
-    charge_type_acc = scipy_balanced_accuracy(charge_type_pred, charge_type_true)
-    hybridization_type_acc = scipy_balanced_accuracy(hybridization_type_pred, hybridization_type_true)
-    return element_type_acc, charge_type_acc, hybridization_type_acc
-
-
-def mask_balenced_accuracy(mask_pred, mask_true):
-    mask_true = mask_true.float().flatten()
-    mask_pred = mask_pred.flatten() > 0
-    mask_pred = mask_pred.long()
-    acc = scipy_balanced_accuracy(mask_pred, mask_true)
-    return acc
-
-
-def adj_balanced_accuracy(adj_pred, adj_true, mask):
-    adj_mask = mask.unsqueeze(1) * mask.unsqueeze(2)
-    adj_true, adj_pred = adj_true[adj_mask], adj_pred[adj_mask]
-    acc = scipy_balanced_accuracy(adj_pred, adj_true)
-    return acc

@@ -1,7 +1,10 @@
 import torch
 from torch.utils.data import Dataset
+from torch.utils.data.distributed import DistributedSampler
+import pandas as pd
+import pytorch_lightning as pl
 from rdkit import Chem
-from torch_geometric.data import Data, Batch
+from torch_geometric.data import Data, Batch, DataLoader
 from torch_geometric.transforms import ToDense
 
 ELEM_LIST = ['C', 'N', 'O', 'S', 'F', 'Si', 'P', 'Cl', 'Br', 'I', 'H']
@@ -12,6 +15,59 @@ HYBRIDIZATION_TYPE_LIST = [Chem.rdchem.HybridizationType.S, Chem.rdchem.Hybridiz
                            Chem.rdchem.HybridizationType.UNSPECIFIED]
 HS_LIST = [0, 1, 2, 3]
 NUM_ELEMENTS = len(ELEM_LIST)
+
+
+class MolecularGraphDataModule(pl.LightningDataModule):
+    def __init__(self, data_path, batch_size, num_nodes, num_eval_samples, num_workers=1, debug=False):
+        super().__init__()
+        self.data_path = data_path
+        self.batch_size = batch_size
+        self.num_nodes = num_nodes
+        self.num_eval_samples = num_eval_samples
+        self.num_workers = num_workers
+        self.debug = debug
+        self.train_dataset = None
+        self.eval_dataset = None
+        self.train_sampler = None
+        self.eval_sampler = None
+
+    def setup(self, stage: str):
+        num_smiles = 1000000 if self.debug else None
+        smiles_df = pd.read_csv(self.data_path, nrows=num_smiles)
+        self.train_dataset = MolecularGraphDatasetFromSmiles(
+            smiles_list=smiles_df.iloc[self.num_eval_samples:].smiles.tolist(),
+            num_nodes=self.num_nodes,
+        )
+        self.eval_dataset = MolecularGraphDatasetFromSmiles(
+            smiles_list=smiles_df.iloc[:self.num_eval_samples].smiles.tolist(),
+            num_nodes=self.num_nodes
+        )
+        self.train_sampler = DistributedSampler(
+            dataset=self.train_dataset,
+            shuffle=True
+        )
+        self.eval_sampler = DistributedSampler(
+            dataset=self.eval_dataset,
+            shuffle=False
+        )
+
+    def train_dataloader(self):
+        return DataLoader(
+            dataset=self.train_dataset,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            pin_memory=True,
+            sampler=self.train_sampler
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            dataset=self.eval_dataset,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers ,
+            pin_memory=True,
+            sampler=self.eval_sampler
+        )
 
 
 class MolecularGraphDatasetFromSmiles(Dataset):

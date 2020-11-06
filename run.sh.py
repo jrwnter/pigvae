@@ -203,10 +203,15 @@ CUDA_VISIBLE_DEVICES=12 python graphae/main.py -i 44 --batch_norm  --lr 0.0001 -
 CUDA_VISIBLE_DEVICES=4 python graphae/main.py -i 45 --batch_norm  --lr 0.0001 -b 256 --emb_dim 2048 --node_dim 1024 --pi_decoder_gumbel_tau 0.5 --pi_encoder_hidden_dim 4096 &
 # no tf
 CUDA_VISIBLE_DEVICES=10 python graphae/main.py -i 46 --batch_norm  --lr 0.0001 -b 256 --emb_dim 2048 --node_dim 1024 --pi_decoder_gumbel_tau 0.5 --pi_encoder_hidden_dim 4096 &
+CUDA_VISIBLE_DEVICES=0 python graphae/main.py -i 47 --batch_norm  --lr 0.0001 -b 256 --emb_dim 2048 --node_dim 1024 --pi_decoder_gumbel_tau 0.5 --pi_encoder_hidden_dim 4096 &
 
 
 # with linear transform to higher element emb
 CUDA_VISIBLE_DEVICES=2 python graphae/main.py -i 27 --batch_norm  --lr 0.00005 -b 256 --emb_dim 1024 --node_dim 64 --element_emb_dim 1024 &
 
+# no tf saves 10 tau decay 0.9
 
+CUDA_VISIBLE_DEVICES=0 python graphae/main.py -i 1 --batch_norm  --lr 0.0001 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 &
+# again with new metrics
+CUDA_VISIBLE_DEVICES=1 python graphae/main.py -i 2 --batch_norm  --lr 0.0001 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 &
 

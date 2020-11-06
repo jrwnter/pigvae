@@ -1,6 +1,6 @@
 import os
 DEFAULT_DATA_PATH = "/home/ggwaq/projects/graph_vae/smiles_atom_count2.csv"
-DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves9")
+DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves10")
 
 
 def add_arguments(parser):
@@ -15,7 +15,7 @@ def add_arguments(parser):
     # GENERAL
     parser.add_argument('--test', dest='test', action='store_true')
     parser.add_argument('-i', '--id', type=int, default=0)
-    parser.add_argument('-g', '--gpus', default=1, type=int)
+    parser.add_argument('-g', '--gpus', default=1, type=int, nargs='+')
     parser.add_argument('-e', '--num_epochs', default=50, type=int)
     parser.add_argument("--num_eval_samples", default=10000, type=int)
     parser.add_argument("--eval_freq", default=500, type=int)
