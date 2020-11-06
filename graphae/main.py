@@ -3,7 +3,7 @@ import logging
 import torch
 from argparse import ArgumentParser
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateLogger
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
 from graphae.trainer import PLGraphAE
 from graphae.hyperparameter import add_arguments
@@ -21,14 +21,10 @@ def main(hparams):
     checkpoint_callback = ModelCheckpoint(
         filepath=hparams.save_dir + "/run{}/".format(hparams.id),
         save_top_k=1,
-        save_last=True,
-        verbose=False,
-        monitor='val_loss',
-        mode='min',
-        prefix=str(hparams.id) + '_',
-        period=0
+        monitor="val_no_tf_loss",
+        save_last=True
     )
-    lr_logger = LearningRateLogger()
+    lr_logger = LearningRateMonitor()
     tb_logger = TensorBoardLogger(hparams.save_dir + "/run{}/".format(hparams.id))
     model = PLGraphAE(hparams.__dict__)
     trainer = pl.Trainer(
