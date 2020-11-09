@@ -217,3 +217,6 @@ CUDA_VISIBLE_DEVICES=1 python graphae/main.py -i 2 --batch_norm  --lr 0.0001 -b 
 # ddp
 python graphae/main.py -i 1  --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 0 1 2 3 &
 python graphae/main.py -i 2  --batch_norm --lr 0.0001 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 9 10 &
+
+# new decoder (with dds and assignment decoding after node decoding(split)
+python graphae/main.py -i 7 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 4 5 6 7 &

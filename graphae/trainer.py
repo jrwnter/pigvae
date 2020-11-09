@@ -25,7 +25,7 @@ class PLGraphAE(pl.LightningModule):
     def forward(self, graph, training, tau, postprocess_method=None):
         postprocess_method = self.get_postprocess_method(postprocess_method)
         node_embs = self.graph_ae.encode(graph=graph)
-        node_embs_pred, _ = self.pi_ae(node_embs, training=training, tau=tau)
+        node_embs_pred, perm = self.pi_ae(node_embs, training=training, tau=tau)
         node_logits, adj_logits, mask_logits = self.graph_ae.decoder(node_embs=node_embs_pred)
         if postprocess_method is not None:
             node_logits, adj_logits = self.postprocess_logits(
@@ -33,7 +33,7 @@ class PLGraphAE(pl.LightningModule):
                 adj_logits=adj_logits,
                 method=postprocess_method,
             )
-        return node_logits, adj_logits, mask_logits
+        return node_logits, adj_logits, mask_logits, perm
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.graph_ae.parameters(), lr=self.hparams["lr"])
@@ -56,7 +56,7 @@ class PLGraphAE(pl.LightningModule):
         sparse_graph, dense_graph = batch[0], batch[1]
         tau = self.tau_scheduler.tau
         self.log("tau", tau)
-        nodes_pred, adj_pred, mask_pred = self(
+        nodes_pred, adj_pred, mask_pred, _ = self(
             graph=sparse_graph,
             training=True,
             tau=tau
@@ -78,7 +78,7 @@ class PLGraphAE(pl.LightningModule):
         sparse_graph, dense_graph = batch[0], batch[1]
         tau = self.tau_scheduler.tau
         nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
-        nodes_pred, adj_pred, mask_pred = self(
+        nodes_pred, adj_pred, mask_pred, _ = self(
             graph=sparse_graph,
             training=False,
             tau=tau
