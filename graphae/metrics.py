@@ -203,3 +203,43 @@ class GraphReconstructionLoss(torch.nn.Module):
         }
         return loss
 
+
+def scipy_balanced_accuracy(input, target):
+    device = input.device
+    if input.dim() == 2:
+        target = torch.argmax(target, axis=-1)
+        input = torch.argmax(input, axis=-1)
+    elif input.dim() > 2:
+        print(input.shape)
+        raise ValueError
+    target = target.cpu().numpy()
+    input = input.cpu().numpy()
+    acc = balanced_accuracy_score(y_true=target, y_pred=input)
+    acc = torch.from_numpy(np.array(acc)).to(device).float()
+    return acc
+
+
+def node_balanced_accuracy(nodes_pred, nodes_true, mask):
+    nodes_true, nodes_pred = nodes_true[mask], nodes_pred[mask]
+    element_type_true, element_type_pred = nodes_true[:, :11], nodes_pred[:, :11]
+    charge_type_true, charge_type_pred = nodes_true[:, 11:16], nodes_pred[:, 11:16]
+    hybridization_type_true, hybridization_type_pred = nodes_true[:, 16:], nodes_pred[:, 16:]
+    element_type_acc = scipy_balanced_accuracy(element_type_pred, element_type_true)
+    charge_type_acc = scipy_balanced_accuracy(charge_type_pred, charge_type_true)
+    hybridization_type_acc = scipy_balanced_accuracy(hybridization_type_pred, hybridization_type_true)
+    return element_type_acc, charge_type_acc, hybridization_type_acc
+
+
+def mask_balenced_accuracy(mask_pred, mask_true):
+    mask_true = mask_true.float().flatten()
+    mask_pred = mask_pred.flatten() > 0
+    mask_pred = mask_pred.long()
+    acc = scipy_balanced_accuracy(mask_pred, mask_true)
+    return acc
+
+
+def adj_balanced_accuracy(adj_pred, adj_true, mask):
+    adj_mask = mask.unsqueeze(1) * mask.unsqueeze(2)
+    adj_true, adj_pred = adj_true[adj_mask], adj_pred[adj_mask]
+    acc = scipy_balanced_accuracy(adj_pred, adj_true)
+    return acc
