@@ -28,7 +28,7 @@ MASK_POS_WEIGHT = torch.Tensor([0.1214])
 
 # TODO: make metric for loss. Right now does not sync correctly, I guess?
 class Critic(torch.nn.Module):
-    def __init__(self, alpha=1.0):
+    def __init__(self, alpha=0.1):
         super().__init__()
         self.alpha = alpha
         self.reconstruction_loss = GraphReconstructionLoss()

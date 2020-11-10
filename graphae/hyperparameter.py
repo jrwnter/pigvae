@@ -33,7 +33,7 @@ def add_arguments(parser):
     parser.add_argument("--start_tf", default=0.9, type=float)
     parser.add_argument("--tf_decay_factor", default=0.9, type=float)
     parser.add_argument("--tf_decay_freq", default=20, type=int)
-    parser.add_argument("--alpha", default=1.0, type=float)
+    parser.add_argument("--alpha", default=0.1, type=float)
     parser.add_argument("--emb_noise", default=0.05, type=float)
     parser.add_argument("--vae", dest='vae', action='store_true')
     parser.set_defaults(vae=False)

@@ -15,7 +15,7 @@ class PLGraphAE(pl.LightningModule):
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
         self.pi_ae = PIVAE(hparams)
-        self.critic = Critic()
+        self.critic = Critic(hparams["alpha"])
         self.tau_scheduler = TauScheduler(
             start_value=1.0,
             factor=0.9,
@@ -56,7 +56,7 @@ class PLGraphAE(pl.LightningModule):
         sparse_graph, dense_graph = batch[0], batch[1]
         tau = self.tau_scheduler.tau
         self.log("tau", tau)
-        nodes_pred, adj_pred, mask_pred, _ = self(
+        nodes_pred, adj_pred, mask_pred, perm = self(
             graph=sparse_graph,
             training=True,
             tau=tau
@@ -69,29 +69,47 @@ class PLGraphAE(pl.LightningModule):
             nodes_pred=nodes_pred,
             adj_pred=adj_pred,
             mask_pred=mask_pred,
+            perm=perm
         )
         self.log("loss", loss["loss"])
+        self.log("perm_loss", loss["perm_loss"])
         return loss
-
 
     def validation_step(self, batch, batch_idx):
         sparse_graph, dense_graph = batch[0], batch[1]
         tau = self.tau_scheduler.tau
         nodes_true, adj_true, mask_true = dense_graph.x, dense_graph.adj, dense_graph.mask
-        nodes_pred, adj_pred, mask_pred, _ = self(
+        nodes_pred, adj_pred, mask_pred, perm = self(
             graph=sparse_graph,
-            training=False,
+            training=True,
             tau=tau
         )
-        metrics = self.critic.evaluate(
+        metrics_soft = self.critic.evaluate(
             nodes_true=nodes_true,
             adj_true=adj_true,
             mask_true=mask_true,
             nodes_pred=nodes_pred,
             adj_pred=adj_pred,
             mask_pred=mask_pred,
-            prefix="val"
+            prefix="val",
+            perm=perm
         )
+        nodes_pred, adj_pred, mask_pred, perm = self(
+            graph=sparse_graph,
+            training=False,
+            tau=tau
+        )
+        metrics_hard = self.critic.evaluate(
+            nodes_true=nodes_true,
+            adj_true=adj_true,
+            mask_true=mask_true,
+            nodes_pred=nodes_pred,
+            adj_pred=adj_pred,
+            mask_pred=mask_pred,
+            prefix="val_hard",
+            perm=perm
+        )
+        metrics = {**metrics_soft, **metrics_hard}
         self.log_dict(metrics)
 
     def on_epoch_end(self):
