@@ -220,3 +220,13 @@ python graphae/main.py -i 2  --batch_norm --lr 0.0001 -b 256 --emb_dim 2048 --no
 
 # new decoder (with dds and assignment decoding after node decoding(split)
 python graphae/main.py -i 7 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 4 5 6 7 &
+
+# perm prediction
+python graphae/main.py -i 8 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 8 9 10 11 &
+
+perm inference, no dds decoder block
+
+python graphae/main.py -i 9 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 8 9 10 11 &
+
+
+

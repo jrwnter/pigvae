@@ -26,10 +26,13 @@ EDGE_WEIGHTS = torch.Tensor([0.0091, 0.0891, 0.8833, 0.0175, 0.0009])
 MASK_POS_WEIGHT = torch.Tensor([0.1214])
 
 
+# TODO: make metric for loss. Right now does not sync correctly, I guess?
 class Critic(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, alpha=1.0):
         super().__init__()
+        self.alpha = alpha
         self.reconstruction_loss = GraphReconstructionLoss()
+        self.perm_loss = PermutaionMatrixPenalty()
         self.element_type_recall = Recall(num_classes=11)
         self.element_type_precision = Precision(num_classes=11)
         self.element_type_accuracy = Accuracy()
@@ -46,8 +49,8 @@ class Critic(torch.nn.Module):
         self.adj_precision = Precision(num_classes=5)
         self.adj_accuracy = Accuracy()
 
-    def forward(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred):
-        loss = self.reconstruction_loss(
+    def forward(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, perm):
+        recon_loss = self.reconstruction_loss(
             nodes_true=nodes_true,
             adj_true=adj_true,
             mask_true=mask_true,
@@ -55,6 +58,9 @@ class Critic(torch.nn.Module):
             adj_pred=adj_pred,
             mask_pred=mask_pred
         )
+        perm_loss = self.perm_loss(perm)
+        loss = {**recon_loss, "perm_loss": perm_loss}
+        loss["loss"] = loss["loss"] + self.alpha * perm_loss
 
         return loss
 
@@ -116,7 +122,7 @@ class Critic(torch.nn.Module):
         }
         return metrics
 
-    def evaluate(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, prefix=None):
+    def evaluate(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, perm, prefix=None):
         loss = self(
             nodes_true=nodes_true,
             adj_true=adj_true,
@@ -124,6 +130,7 @@ class Critic(torch.nn.Module):
             nodes_pred=nodes_pred,
             adj_pred=adj_pred,
             mask_pred=mask_pred,
+            perm=perm
         )
         node_metrics = self.node_metrics(
             nodes_pred=nodes_pred,
@@ -201,6 +208,32 @@ class GraphReconstructionLoss(torch.nn.Module):
             "node_loss": node_loss,
             "loss": total_loss
         }
+        return loss
+
+
+# TODO: do entropy over row and col cross for each entry?
+class PermutaionMatrixPenalty(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    @staticmethod
+    def entropy(p, axis, normalize=True, eps=10e-12):
+        if normalize:
+            p = p / (p.sum(axis=axis, keepdim=True) + eps)
+        e = - torch.sum(p * torch.clamp_min(torch.log(p), -100), axis=axis)
+        return e
+
+    def forward(self, perm):
+        batch_size = perm.size(0)
+        num_nodes = perm.size(1)
+        entropy_col = self.entropy(perm, axis=1)
+        entropy_row = self.entropy(perm, axis=2)
+        penalty = entropy_col.mean() + entropy_row.mean()
+        identity = torch.ones((batch_size, num_nodes)).type_as(perm)
+        constrain_col = torch.abs(torch.sum(perm, axis=1) - identity).mean()
+        constrain_row = torch.abs(torch.sum(perm, axis=2) - identity).mean()
+        constrain = constrain_col + constrain_row
+        loss = penalty + 10 * constrain
         return loss
 
 
