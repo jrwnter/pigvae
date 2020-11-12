@@ -223,17 +223,18 @@ class PermutaionMatrixPenalty(torch.nn.Module):
         e = - torch.sum(p * torch.clamp_min(torch.log(p), -100), axis=axis)
         return e
 
-    def forward(self, perm):
+    def forward(self, perm, eps=10e-8):
         batch_size = perm.size(0)
         num_nodes = perm.size(1)
-        entropy_col = self.entropy(perm, axis=1)
-        entropy_row = self.entropy(perm, axis=2)
+        perm = perm + eps
+        entropy_col = self.entropy(perm, axis=1, normalize=False)
+        entropy_row = self.entropy(perm, axis=2, normalize=False)
         penalty = entropy_col.mean() + entropy_row.mean()
-        identity = torch.ones((batch_size, num_nodes)).type_as(perm)
-        constrain_col = torch.abs(torch.sum(perm, axis=1) - identity).mean()
-        constrain_row = torch.abs(torch.sum(perm, axis=2) - identity).mean()
-        constrain = constrain_col + constrain_row
-        loss = penalty + 10 * constrain
+        #identity = torch.ones((batch_size, num_nodes)).type_as(perm)
+        #constrain_col = torch.abs(torch.sum(perm, axis=1) - identity).mean()
+        #constrain_row = torch.abs(torch.sum(perm, axis=2) - identity).mean()
+        #constrain = constrain_col + constrain_row
+        loss = penalty # + 10 * constrain
         return loss
 
 
