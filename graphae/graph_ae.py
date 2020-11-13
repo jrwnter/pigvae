@@ -68,11 +68,7 @@ class GraphAE(torch.nn.Module):
 
     def encode(self, graph):
         node_embs = self.encoder(graph=graph, noise=None)
-        node_embs, mask = self.node_embs_to_dense(
-            node_embs=node_embs,
-            batch_idxs=graph.batch
-        )
-        return node_embs, mask
+        return node_embs
 
     def forward(self, graph, postprocess_method=None, noise=None):
         node_embs = self.encode(graph=graph)
