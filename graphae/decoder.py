@@ -3,6 +3,9 @@ from graphae.fully_connected import FNN
 from pivae.dds import DDSBlock
 
 
+
+
+
 class EdgeDecoder(torch.nn.Module):
     def __init__(self, node_dim, hidden_dim, num_nodes, num_layers,
                  num_edge_features, non_lin, batch_norm):
@@ -16,7 +19,7 @@ class EdgeDecoder(torch.nn.Module):
             hidden_dim=hidden_dim,
             output_dim=self.num_edge_features,
             num_layers=num_layers,
-            aggregate_inner="sum",
+            aggregate_inner="max",
             aggregate_outer=None,
             non_linearity=non_lin,
             batch_norm=batch_norm,
@@ -48,3 +51,6 @@ class NodePredictor(torch.nn.Module):
         # x: [batch_size, input_dim]
         x = self.fnn(x)
         return x
+
+
+class SelfAttention()
