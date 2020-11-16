@@ -50,11 +50,10 @@ class GraphDecoder(torch.nn.Module):
             non_lin=hparams["nonlin"]
         )
 
-    def forward(self, node_embs):
+    def forward(self, node_embs, edge_index, edge_index_batch):
         node_logits = self.node_predictor(node_embs)
-        adj_logits = self.edge_predictor(node_embs)
-        mask_logits, node_logits = node_logits[:, :, 0], node_logits[:, :, 1:]
-        return node_logits, adj_logits, mask_logits
+        edge_logits = self.edge_predictor(node_embs, edge_index, edge_index_batch)
+        return node_logits, edge_logits
 
 
 class GraphAE(torch.nn.Module):
@@ -64,51 +63,40 @@ class GraphAE(torch.nn.Module):
         self.decoder = GraphDecoder(hparams)
         self.node_dim = hparams["node_dim"]
         self.num_nodes = hparams["max_num_nodes"]
-        self.empty_node = Parameter(torch.randn(self.node_dim))
 
     def encode(self, graph):
         node_embs = self.encoder(graph=graph, noise=None)
         return node_embs
 
-    def forward(self, graph, postprocess_method=None, noise=None):
+    def forward(self, graph, postprocess_method=None):
         node_embs = self.encode(graph=graph)
-        node_logits, adj_logits, mask_logits = self.decoder(node_embs=node_embs)
+        node_logits, edge_logits = self.decoder(
+            node_embs=node_embs,
+            edge_index=graph.dense_edge_index,
+            edge_index_batch=graph.dense_edge_index_batch
+        )
         if postprocess_method is not None:
-            node_logits, adj_logits = self.postprocess_logits(
+            node_logits, edge_logits = self.postprocess_logits(
                 node_logits=node_logits,
-                adj_logits=adj_logits,
+                edge_logits=edge_logits,
                 method=postprocess_method,
             )
-        return node_logits, adj_logits, mask_logits
-
-    def node_embs_to_dense(self, node_embs, batch_idxs):
-        batch_size = batch_idxs.max().item() + 1
-        device = node_embs.device
-        mask = torch.where(
-            torch.arange(self.num_nodes, device=device).unsqueeze(0) < torch.bincount(batch_idxs).unsqueeze(1),
-            torch.ones(batch_size, self.num_nodes, device=device),
-            torch.zeros(batch_size, self.num_nodes, device=device)
-        ).bool().view(batch_size, self.num_nodes, 1).repeat(1, 1, self.node_dim)
-
-        node_embs_dense = node_embs.new_zeros(batch_size, self.num_nodes, self.node_dim)
-        node_embs_dense = node_embs_dense.masked_scatter_(mask, node_embs)
-
-        return node_embs_dense, mask
+        return node_logits, edge_logits
 
     @staticmethod
-    def postprocess_logits(node_logits, adj_logits, method=None, temp=1.0):
-        element_type = node_logits[:, :, :11]
-        charge_type = node_logits[:, :, 11:16]
-        hybridization_type = node_logits[:, :, 16:]
+    def postprocess_logits(node_logits, edge_logits, method=None, temp=1.0):
+        element_type = node_logits[:, :11]
+        charge_type = node_logits[:, 11:16]
+        hybridization_type = node_logits[:, 16:]
         element_type = postprocess(element_type, method=method, temperature=temp)
         charge_type = postprocess(charge_type, method=method, temperature=temp)
         hybridization_type = postprocess(hybridization_type, method=method, temperature=temp)
         nodes = torch.cat((element_type, charge_type, hybridization_type), dim=-1)
-        adj = postprocess(adj_logits, method=method)
-        return nodes, adj
+        edges = postprocess(edge_logits, method=method)
+        return nodes, edges
 
     @staticmethod
-    def logits_to_one_hot(nodes, adj):
+    def logits_to_one_hot(nodes, edges):
         batch_size, num_nodes = nodes.size(0), nodes.size(1)
         element_type = torch.argmax(nodes[:, :, :11], axis=-1).unsqueeze(-1)
         element_type = torch.zeros((batch_size, num_nodes, 11)).type_as(element_type).scatter_(2, element_type, 1)
@@ -117,10 +105,11 @@ class GraphAE(torch.nn.Module):
         hybridization_type = torch.argmax(nodes[:, :, 16:], axis=-1).unsqueeze(-1)
         hybridization_type = torch.zeros((batch_size, num_nodes, 7)).type_as(hybridization_type).scatter_(2, hybridization_type, 1)
         nodes = torch.cat((element_type, charge_type, hybridization_type), dim=-1)
-        adj_shape = adj.shape
-        adj = torch.argmax(adj, axis=-1).unsqueeze(-1)
-        adj = torch.zeros(adj_shape).type_as(adj).scatter_(3, adj, 1)
-        return nodes, adj
+        edges_shape = edges.shape
+        edges = torch.argmax(edges, axis=-1).unsqueeze(-1)
+        edges = torch.zeros(edges_shape).type_as(edges).scatter_(1, edges, 1)
+        return nodes, edges
+
 
 def postprocess(logits, method, temperature=1.):
     if method == 'soft_gumbel':

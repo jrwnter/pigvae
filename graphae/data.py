@@ -57,7 +57,8 @@ class MolecularGraphDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=True,
-            sampler=self.train_sampler
+            sampler=self.train_sampler,
+            follow_batch=["dense_edge_index"]
         )
 
     def val_dataloader(self):
@@ -66,7 +67,8 @@ class MolecularGraphDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers ,
             pin_memory=True,
-            sampler=self.eval_sampler
+            sampler=self.eval_sampler,
+            follow_batch=["dense_edge_index"]
         )
 
 
@@ -77,6 +79,24 @@ class MolecularGraphDatasetFromSmiles(Dataset):
         self.dense_transform = ToDense(num_nodes=num_nodes)
         self.randomize_smiles = randomize_smiles
 
+    def dense_edge_index(self, graph):
+        num_elements = graph.x.size(0)
+        edge_index = torch.combinations(torch.arange(num_elements), 2).transpose(1, 0)
+        return edge_index
+
+    def dense_edge_attr(self, graph):
+        idx1, idx2 = torch.where(
+            (graph.dense_edge_index.unsqueeze(2) == graph.edge_index.unsqueeze(1)).all(dim=0) |
+            (graph.dense_edge_index[[1, 0]].unsqueeze(2) == graph.edge_index.unsqueeze(1)).all(dim=0))
+        # remove dublicate/other direction
+        idx1 = idx1.view(-1, 2)[:, 0]
+        idx2 = idx2.view(-1, 2)[:, 0]
+        dense_edge_attr = torch.cat((
+            torch.zeros(graph.dense_edge_index.size(1), graph.edge_attr.size(1)),
+            torch.ones(graph.dense_edge_index.size(1), 1)), dim=-1)
+        dense_edge_attr[idx1] = torch.cat((graph.edge_attr, torch.zeros(graph.edge_attr.size(0), 1)), dim=-1)[idx2]
+        return dense_edge_attr
+
     def __len__(self):
         return len(self.smiles)
 
@@ -84,13 +104,10 @@ class MolecularGraphDatasetFromSmiles(Dataset):
         smiles = self.smiles[idx]
         if self.randomize_smiles:
             smiles = Chem.MolToSmiles(Chem.MolFromSmiles(smiles), doRandom=True)
-        sparse_graph = MolecularGraph.from_smiles(smiles)
-        dense_graph = self.dense_transform(sparse_graph.clone())
-        dense_graph.x = dense_graph.x.unsqueeze(0)
-        dense_graph.adj = dense_graph.adj.unsqueeze(0)
-        dense_graph.adj = add_empty_edge_type(dense_graph.adj)
-        dense_graph.mask = dense_graph.mask.unsqueeze(0)
-        return sparse_graph, dense_graph
+        graph = MolecularGraph.from_smiles(smiles)
+        graph.dense_edge_index = self.dense_edge_index(graph)
+        graph.dense_edge_attr = self.dense_edge_attr(graph)
+        return graph
 
 
 class MolecularGraphDataset(Dataset):

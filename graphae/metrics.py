@@ -32,7 +32,7 @@ class Critic(torch.nn.Module):
         super().__init__()
         self.alpha = alpha
         self.reconstruction_loss = GraphReconstructionLoss()
-        self.perm_loss = PermutaionMatrixPenalty()
+        #self.perm_loss = PermutaionMatrixPenalty()
         self.element_type_recall = Recall(num_classes=11)
         self.element_type_precision = Precision(num_classes=11)
         self.element_type_accuracy = Accuracy()
@@ -42,30 +42,25 @@ class Critic(torch.nn.Module):
         self.hybridization_type_recall = Recall(num_classes=7)
         self.hybridization_type_precision = Precision(num_classes=7)
         self.hybridization_type_accuracy = Accuracy()
-        self.mask_recall = Recall()
-        self.mask_precision = Precision()
-        self.mask_accuracy = Accuracy()
-        self.adj_recall = Recall(num_classes=5)
-        self.adj_precision = Precision(num_classes=5)
-        self.adj_accuracy = Accuracy()
+        self.edge_recall = Recall(num_classes=5)
+        self.edge_precision = Precision(num_classes=5)
+        self.edge_accuracy = Accuracy()
 
-    def forward(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, perm):
+    def forward(self, nodes_true, edges_true, nodes_pred, edges_pred, perm=None):
         recon_loss = self.reconstruction_loss(
             nodes_true=nodes_true,
-            adj_true=adj_true,
-            mask_true=mask_true,
+            edges_true=edges_true,
             nodes_pred=nodes_pred,
-            adj_pred=adj_pred,
-            mask_pred=mask_pred
+            edges_pred=edges_pred,
         )
-        perm_loss = self.perm_loss(perm)
-        loss = {**recon_loss, "perm_loss": perm_loss}
-        loss["loss"] = loss["loss"] + self.alpha * perm_loss
+        #perm_loss = self.perm_loss(perm)
+        #loss = {**recon_loss, "perm_loss": perm_loss}
+        #loss["loss"] = loss["loss"] + self.alpha * perm_loss
+        loss = recon_loss
 
         return loss
 
-    def node_metrics(self, nodes_pred, nodes_true, mask):
-        nodes_true, nodes_pred = nodes_true[mask], nodes_pred[mask]
+    def node_metrics(self, nodes_pred, nodes_true):
         element_type_true = torch.argmax(nodes_true[:, :11], axis=-1)
         element_type_pred = torch.argmax(nodes_pred[:, :11], axis=-1)
         charge_type_true = torch.argmax(nodes_true[:, 11:16], axis=-1)
@@ -95,58 +90,34 @@ class Critic(torch.nn.Module):
 
         return metrics
 
-    def mask_metrics(self, mask_pred, mask_true):
-        mask_true = mask_true.float().flatten()
-        mask_pred = mask_pred.flatten() > 0
-        mask_pred = mask_pred.long()
+    def edge_metrics(self, edges_pred, edges_true):
         metrics = {
-            "mask_recall": self.mask_recall(
-                preds=mask_pred, target=mask_true),
-            "mask_precision": self.mask_precision(
-                preds=mask_pred, target=mask_true),
-            "mask_accuracy": self.mask_accuracy(
-                preds=mask_pred, target=mask_true),
+            "edge_recall": self.edge_recall(
+                preds=edges_pred, target=edges_true),
+            "edge_precision": self.edge_precision(
+                preds=edges_pred, target=edges_true),
+            "edge_accuracy": self.edge_accuracy(
+                preds=edges_pred, target=edges_true),
         }
         return metrics
 
-    def adj_metrics(self, adj_pred, adj_true, mask):
-        adj_mask = mask.unsqueeze(1) * mask.unsqueeze(2)
-        adj_true, adj_pred = adj_true[adj_mask], adj_pred[adj_mask]
-        metrics = {
-            "adj_recall": self.adj_recall(
-                preds=adj_pred, target=adj_true),
-            "adj_precision": self.adj_precision(
-                preds=adj_pred, target=adj_true),
-            "adj_accuracy": self.adj_accuracy(
-                preds=adj_pred, target=adj_true),
-        }
-        return metrics
-
-    def evaluate(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred, perm, prefix=None):
+    def evaluate(self, nodes_true, edges_true, nodes_pred, edges_pred, perm=None, prefix=None):
         loss = self(
             nodes_true=nodes_true,
-            adj_true=adj_true,
-            mask_true=mask_true,
+            edges_true=edges_true,
             nodes_pred=nodes_pred,
-            adj_pred=adj_pred,
-            mask_pred=mask_pred,
+            edges_pred=edges_pred,
             perm=perm
         )
         node_metrics = self.node_metrics(
             nodes_pred=nodes_pred,
             nodes_true=nodes_true,
-            mask=mask_true
         )
-        adj_metrics = self.adj_metrics(
-            adj_pred=adj_pred,
-            adj_true=adj_true,
-            mask=mask_true
+        edge_metrics = self.edge_metrics(
+            edges_pred=edges_pred,
+            edges_true=edges_true,
         )
-        mask_metrics = self.mask_metrics(
-            mask_pred=mask_pred,
-            mask_true=mask_true
-        )
-        metrics = {**loss, **node_metrics, **adj_metrics, **mask_metrics}
+        metrics = {**loss, **node_metrics, **edge_metrics}
 
         if prefix is not None:
             metrics2 = {}
@@ -160,51 +131,43 @@ class Critic(torch.nn.Module):
 class GraphReconstructionLoss(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.mask_loss = BCEWithLogitsLoss(pos_weight=MASK_POS_WEIGHT)
         self.element_type_loss = CrossEntropyLoss(weight=ELEMENT_TYPE_WEIGHTS)
         self.charge_type_loss = CrossEntropyLoss(weight=CHARGE_TYPE_WEIGHTS)
         self.hybridization_type_loss = CrossEntropyLoss(weight=HYBRIDIZATION_TYPE_WEIGHT)
-        self.adj_loss = CrossEntropyLoss(weight=EDGE_WEIGHTS)
+        self.edge_loss = CrossEntropyLoss(weight=EDGE_WEIGHTS)
 
-    def forward(self, nodes_true, adj_true, mask_true, nodes_pred, adj_pred, mask_pred):
-        mask_loss = self.mask_loss(
-            input=mask_pred.flatten(),
-            target=mask_true.flatten().float()
-        )
-        element_type_pred = nodes_pred[:, :, :11][mask_true]
-        element_type_true = torch.argmax(nodes_true[:, :, :11][mask_true], axis=-1).flatten()
+    def forward(self, nodes_true, edges_true, nodes_pred, edges_pred):
+        element_type_pred = nodes_pred[:, :11]
+        element_type_true = torch.argmax(nodes_true[:, :11], axis=-1).flatten()
         element_type_loss = self.element_type_loss(
             input=element_type_pred,
             target=element_type_true
         )
-        charge_type_pred = nodes_pred[:, :, 11:16][mask_true]
-        charge_type_true = torch.argmax(nodes_true[:, :, 11:16][mask_true], axis=-1).flatten()
+        charge_type_pred = nodes_pred[:, 11:16]
+        charge_type_true = torch.argmax(nodes_true[:, 11:16], axis=-1).flatten()
         charge_type_loss = self.charge_type_loss(
             input=charge_type_pred,
             target=charge_type_true
         )
-        hybridization_type_pred = nodes_pred[:, :, 16:][mask_true]
-        hybridization_type_true = torch.argmax(nodes_true[:, :, 16:][mask_true], axis=-1).flatten()
+        hybridization_type_pred = nodes_pred[:, 16:]
+        hybridization_type_true = torch.argmax(nodes_true[:, 16:], axis=-1).flatten()
         hybridization_type_loss = self.hybridization_type_loss(
             input=hybridization_type_pred,
             target=hybridization_type_true
         )
 
-        adj_mask = mask_true.unsqueeze(1) * mask_true.unsqueeze(2)
-        adj_pred = adj_pred[adj_mask]
-        adj_true = torch.argmax(adj_true[adj_mask], axis=-1).flatten()
-        adjacency_loss = self.adj_loss(
-            input=adj_pred,
-            target=adj_true
+        edges_true = torch.argmax(edges_true, axis=-1).flatten()
+        edge_loss = self.edge_loss(
+            input=edges_pred,
+            target=edges_true
         )
         node_loss = (element_type_loss + charge_type_loss + hybridization_type_loss) / 3
-        total_loss = mask_loss + node_loss + adjacency_loss
+        total_loss = node_loss + edge_loss
         loss = {
-            "mask_loss": mask_loss,
             "element_type_loss": element_type_loss,
             "charge_type_loss": charge_type_loss,
             "hybridization_type_loss": hybridization_type_loss,
-            "adjacency_loss": adjacency_loss,
+            "edge_loss": edge_loss,
             "node_loss": node_loss,
             "loss": total_loss
         }

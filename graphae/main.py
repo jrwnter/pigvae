@@ -23,7 +23,7 @@ def main(hparams):
     checkpoint_callback = ModelCheckpoint(
         filepath=hparams.save_dir + "/run{}/".format(hparams.id),
         save_top_k=1,
-        monitor="val_adj_accuracy",
+        monitor="val_loss",
         save_last=True
     )
     lr_logger = LearningRateMonitor()

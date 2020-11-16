@@ -6,9 +6,7 @@ class MyDistributedDataParallel(LightningDistributedDataParallel):
     def scatter(self, inputs, kwargs, device_ids):
         kwargs["batch_idx"] = inputs[1]
         kwargs = (kwargs, )
-        #inputs = ((inputs[0].to(torch.device('cuda:{}'.format(device_ids[0]))), ), )
-        inputs = (([inputs[0][0].to(torch.device('cuda:{}'.format(device_ids[0]))),
-                    inputs[0][1].to(torch.device('cuda:{}'.format(device_ids[0])))],),)
+        inputs = ((inputs[0].to(torch.device('cuda:{}'.format(device_ids[0]))), ), )
         return inputs, kwargs
 
 

@@ -1,6 +1,6 @@
 import os
 DEFAULT_DATA_PATH = "/home/ggwaq/projects/graph_vae/smiles_atom_count2.csv"
-DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves10")
+DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves11")
 
 
 def add_arguments(parser):

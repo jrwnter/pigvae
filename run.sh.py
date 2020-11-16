@@ -266,4 +266,7 @@ python graphae/main.py -i 24 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --no
 python graphae/main.py -i 27 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 0 1 2 3 --progress_bar --alpha 0.5
 
 
+# just graph vae but without mask
+python graphae/main.py -i 28 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 0 1 2 3 --progress_bar --alpha 0.5
+
 
