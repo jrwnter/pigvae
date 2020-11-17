@@ -28,9 +28,8 @@ class PLGraphAE(pl.LightningModule):
         node_embs_pred = node_embs
         #node_embs_pred, perm = self.pi_ae(node_embs, training=training, tau=tau)
         node_logits, adj_logits = self.graph_ae.decoder(
-            node_embs=node_embs_pred,
+            x=node_embs_pred,
             edge_index=graph.dense_edge_index,
-            edge_index_batch=graph.dense_edge_index_batch
         )
         if postprocess_method is not None:
             node_logits, adj_logits = self.postprocess_logits(

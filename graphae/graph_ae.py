@@ -21,10 +21,8 @@ class GraphEncoder(torch.nn.Module):
             stack_node_emb=hparams["stack_node_emb"]
         )
 
-    def forward(self, graph, noise=None):
+    def forward(self, graph):
         node_embs = self.encoder(graph)
-        if noise is not None:
-            node_embs = node_embs + noise * torch.randn_like(node_embs)
         return node_embs
 
 
@@ -32,27 +30,37 @@ class GraphDecoder(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
 
-        self.edge_predictor = decoder.EdgeDecoder(
-            node_dim=hparams["node_dim"],
-            hidden_dim=hparams["edge_decoder_hidden_dim"],
-            num_layers=hparams["edge_decoder_num_layers"],
-            num_edge_features=hparams["num_edge_features"],
-            num_nodes=hparams["max_num_nodes"],
+        self.node_emb_decoder = decoder.NodeEmbDecoder(
+            input_dim=hparams["node_dim"],
+            hidden_dim=hparams["node_emb_decoder_hidden_dim"],
+            num_layers=hparams["node_emb_decoder_num_layers"],
+            output_dim=hparams["node_emb_decoder_hidden_dim"],
+            num_heads=4,
             non_lin=hparams["nonlin"],
             batch_norm=hparams["batch_norm"],
         )
-        self.node_predictor = decoder.NodePredictor(
-            node_dim=hparams["node_dim"],
-            hidden_dim=hparams["node_decoder_hidden_dim"],
-            num_layers=hparams["node_decoder_num_layers"],
+
+        self.edge_predictor = decoder.EdgeTypePredictor(
+            input_dim=hparams["node_emb_decoder_hidden_dim"],
+            hidden_dim=hparams["edge_decoder_hidden_dim"],
+            output_dim=hparams["num_edge_features"] + 1,
+            num_layers=hparams["edge_decoder_num_layers"],
+            non_lin=hparams["nonlin"],
             batch_norm=hparams["batch_norm"],
-            num_node_features=hparams["num_node_features"],
-            non_lin=hparams["nonlin"]
+        )
+        self.node_predictor = decoder.NodeTypePredictor(
+            input_dim=hparams["node_emb_decoder_hidden_dim"],
+            hidden_dim=hparams["node_decoder_hidden_dim"],
+            output_dim=hparams["num_node_features"],
+            num_layers=hparams["node_decoder_num_layers"],
+            non_lin=hparams["nonlin"],
+            batch_norm=hparams["batch_norm"],
         )
 
-    def forward(self, node_embs, edge_index, edge_index_batch):
-        node_logits = self.node_predictor(node_embs)
-        edge_logits = self.edge_predictor(node_embs, edge_index, edge_index_batch)
+    def forward(self, x, edge_index):
+        x = self.node_emb_decoder(x, edge_index)
+        node_logits = self.node_predictor(x)
+        edge_logits = self.edge_predictor(x, edge_index)
         return node_logits, edge_logits
 
 
@@ -65,15 +73,14 @@ class GraphAE(torch.nn.Module):
         self.num_nodes = hparams["max_num_nodes"]
 
     def encode(self, graph):
-        node_embs = self.encoder(graph=graph, noise=None)
+        node_embs = self.encoder(graph=graph)
         return node_embs
 
     def forward(self, graph, postprocess_method=None):
         node_embs = self.encode(graph=graph)
         node_logits, edge_logits = self.decoder(
-            node_embs=node_embs,
+            x=node_embs,
             edge_index=graph.dense_edge_index,
-            edge_index_batch=graph.dense_edge_index_batch
         )
         if postprocess_method is not None:
             node_logits, edge_logits = self.postprocess_logits(
