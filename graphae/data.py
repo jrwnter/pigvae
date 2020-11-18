@@ -18,11 +18,11 @@ NUM_ELEMENTS = len(ELEM_LIST)
 
 
 class MolecularGraphDataModule(pl.LightningDataModule):
-    def __init__(self, data_path, batch_size, num_nodes, num_eval_samples, num_workers=1, debug=False):
+    def __init__(self, data_path, batch_size, max_num_nodes, num_eval_samples, num_workers=1, debug=False):
         super().__init__()
         self.data_path = data_path
         self.batch_size = batch_size
-        self.num_nodes = num_nodes
+        self.max_num_nodes = max_num_nodes
         self.num_eval_samples = num_eval_samples
         self.num_workers = num_workers
         self.debug = debug
@@ -34,22 +34,21 @@ class MolecularGraphDataModule(pl.LightningDataModule):
     def setup(self, stage: str):
         num_smiles = 1000000 if self.debug else None
         smiles_df = pd.read_csv(self.data_path, nrows=num_smiles)
+        smiles_df = smiles_df[smiles_df.num_atoms <= self.max_num_nodes]
         self.train_dataset = MolecularGraphDatasetFromSmiles(
             smiles_list=smiles_df.iloc[self.num_eval_samples:].smiles.tolist(),
-            num_nodes=self.num_nodes,
         )
         self.eval_dataset = MolecularGraphDatasetFromSmiles(
             smiles_list=smiles_df.iloc[:self.num_eval_samples].smiles.tolist(),
-            num_nodes=self.num_nodes
         )
-        self.train_sampler = DistributedSampler(
+        """self.train_sampler = DistributedSampler(
             dataset=self.train_dataset,
             shuffle=True
         )
         self.eval_sampler = DistributedSampler(
             dataset=self.eval_dataset,
             shuffle=False
-        )
+        )"""
 
     def train_dataloader(self):
         return DataLoader(
@@ -57,26 +56,23 @@ class MolecularGraphDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=True,
-            sampler=self.train_sampler,
-            follow_batch=["dense_edge_index"]
+            #sampler=self.train_sampler,
         )
 
     def val_dataloader(self):
         return DataLoader(
             dataset=self.eval_dataset,
             batch_size=self.batch_size,
-            num_workers=self.num_workers ,
+            num_workers=self.num_workers,
             pin_memory=True,
-            sampler=self.eval_sampler,
-            follow_batch=["dense_edge_index"]
+            #sampler=self.eval_sampler,
         )
 
 
 class MolecularGraphDatasetFromSmiles(Dataset):
-    def __init__(self, smiles_list, num_nodes, randomize_smiles=True):
+    def __init__(self, smiles_list, randomize_smiles=True):
         super().__init__()
         self.smiles = smiles_list
-        self.dense_transform = ToDense(num_nodes=num_nodes)
         self.randomize_smiles = randomize_smiles
 
     def dense_edge_index(self, graph):

@@ -32,7 +32,7 @@ class Critic(torch.nn.Module):
         super().__init__()
         self.alpha = alpha
         self.reconstruction_loss = GraphReconstructionLoss()
-        #self.perm_loss = PermutaionMatrixPenalty()
+        self.perm_loss = PermutaionMatrixPenalty()
         self.element_type_recall = Recall(num_classes=11)
         self.element_type_precision = Precision(num_classes=11)
         self.element_type_accuracy = Accuracy()
@@ -46,18 +46,17 @@ class Critic(torch.nn.Module):
         self.edge_precision = Precision(num_classes=5)
         self.edge_accuracy = Accuracy()
 
-    def forward(self, nodes_true, edges_true, nodes_pred, edges_pred, perm=None):
+    def forward(self, nodes_true, edges_true, nodes_pred, edges_pred, perm, mask):
         recon_loss = self.reconstruction_loss(
             nodes_true=nodes_true,
             edges_true=edges_true,
             nodes_pred=nodes_pred,
             edges_pred=edges_pred,
         )
-        #perm_loss = self.perm_loss(perm)
-        #loss = {**recon_loss, "perm_loss": perm_loss}
-        #loss["loss"] = loss["loss"] + self.alpha * perm_loss
-        loss = recon_loss
-
+        perm_loss = self.perm_loss(perm, mask)
+        loss = {**recon_loss, "perm_loss": perm_loss}
+        loss["loss"] = loss["loss"] + self.alpha * perm_loss
+        #loss = recon_loss
         return loss
 
     def node_metrics(self, nodes_pred, nodes_true):
@@ -101,13 +100,14 @@ class Critic(torch.nn.Module):
         }
         return metrics
 
-    def evaluate(self, nodes_true, edges_true, nodes_pred, edges_pred, perm=None, prefix=None):
+    def evaluate(self, nodes_true, edges_true, nodes_pred, edges_pred, perm, mask, prefix=None):
         loss = self(
             nodes_true=nodes_true,
             edges_true=edges_true,
             nodes_pred=nodes_pred,
             edges_pred=edges_pred,
-            perm=perm
+            perm=perm,
+            mask=mask
         )
         node_metrics = self.node_metrics(
             nodes_pred=nodes_pred,
@@ -186,18 +186,11 @@ class PermutaionMatrixPenalty(torch.nn.Module):
         e = - torch.sum(p * torch.clamp_min(torch.log(p), -100), axis=axis)
         return e
 
-    def forward(self, perm, eps=10e-8):
-        batch_size = perm.size(0)
-        num_nodes = perm.size(1)
+    def forward(self, perm, mask, eps=10e-8):
         perm = perm + eps
         entropy_col = self.entropy(perm, axis=1, normalize=False)
         entropy_row = self.entropy(perm, axis=2, normalize=False)
-        penalty = entropy_col.mean() + entropy_row.mean()
-        #identity = torch.ones((batch_size, num_nodes)).type_as(perm)
-        #constrain_col = torch.abs(torch.sum(perm, axis=1) - identity).mean()
-        #constrain_row = torch.abs(torch.sum(perm, axis=2) - identity).mean()
-        #constrain = constrain_col + constrain_row
-        loss = penalty # + 10 * constrain
+        loss = entropy_col.mean() + entropy_row.mean()
         return loss
 
 
@@ -216,8 +209,7 @@ def scipy_balanced_accuracy(input, target):
     return acc
 
 
-def node_balanced_accuracy(nodes_pred, nodes_true, mask):
-    nodes_true, nodes_pred = nodes_true[mask], nodes_pred[mask]
+def node_balanced_accuracy(nodes_pred, nodes_true):
     element_type_true, element_type_pred = nodes_true[:, :11], nodes_pred[:, :11]
     charge_type_true, charge_type_pred = nodes_true[:, 11:16], nodes_pred[:, 11:16]
     hybridization_type_true, hybridization_type_pred = nodes_true[:, 16:], nodes_pred[:, 16:]
@@ -227,16 +219,6 @@ def node_balanced_accuracy(nodes_pred, nodes_true, mask):
     return element_type_acc, charge_type_acc, hybridization_type_acc
 
 
-def mask_balenced_accuracy(mask_pred, mask_true):
-    mask_true = mask_true.float().flatten()
-    mask_pred = mask_pred.flatten() > 0
-    mask_pred = mask_pred.long()
-    acc = scipy_balanced_accuracy(mask_pred, mask_true)
-    return acc
-
-
-def adj_balanced_accuracy(adj_pred, adj_true, mask):
-    adj_mask = mask.unsqueeze(1) * mask.unsqueeze(2)
-    adj_true, adj_pred = adj_true[adj_mask], adj_pred[adj_mask]
-    acc = scipy_balanced_accuracy(adj_pred, adj_true)
+def edge_balanced_accuracy(edges_pred, edges_true):
+    acc = scipy_balanced_accuracy(edges_pred, edges_true)
     return acc

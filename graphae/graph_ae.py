@@ -57,8 +57,8 @@ class GraphDecoder(torch.nn.Module):
             batch_norm=hparams["batch_norm"],
         )
 
-    def forward(self, x, edge_index):
-        x = self.node_emb_decoder(x, edge_index)
+    def forward(self, x, edge_index, batch):
+        x = self.node_emb_decoder(x, batch)
         node_logits = self.node_predictor(x)
         edge_logits = self.edge_predictor(x, edge_index)
         return node_logits, edge_logits
@@ -81,6 +81,7 @@ class GraphAE(torch.nn.Module):
         node_logits, edge_logits = self.decoder(
             x=node_embs,
             edge_index=graph.dense_edge_index,
+            batch=graph.batch
         )
         if postprocess_method is not None:
             node_logits, edge_logits = self.postprocess_logits(
@@ -104,13 +105,13 @@ class GraphAE(torch.nn.Module):
 
     @staticmethod
     def logits_to_one_hot(nodes, edges):
-        batch_size, num_nodes = nodes.size(0), nodes.size(1)
-        element_type = torch.argmax(nodes[:, :, :11], axis=-1).unsqueeze(-1)
-        element_type = torch.zeros((batch_size, num_nodes, 11)).type_as(element_type).scatter_(2, element_type, 1)
-        charge_type = torch.argmax(nodes[:, :, 11:16], axis=-1).unsqueeze(-1)
-        charge_type = torch.zeros((batch_size, num_nodes, 5)).type_as(charge_type).scatter_(2, charge_type, 1)
-        hybridization_type = torch.argmax(nodes[:, :, 16:], axis=-1).unsqueeze(-1)
-        hybridization_type = torch.zeros((batch_size, num_nodes, 7)).type_as(hybridization_type).scatter_(2, hybridization_type, 1)
+        batch_size = nodes.size(0)
+        element_type = torch.argmax(nodes[:, :11], axis=-1).unsqueeze(-1)
+        element_type = torch.zeros((batch_size, 11)).type_as(element_type).scatter_(1, element_type, 1)
+        charge_type = torch.argmax(nodes[:, 11:16], axis=-1).unsqueeze(-1)
+        charge_type = torch.zeros((batch_size, 5)).type_as(charge_type).scatter_(1, charge_type, 1)
+        hybridization_type = torch.argmax(nodes[:, 16:], axis=-1).unsqueeze(-1)
+        hybridization_type = torch.zeros((batch_size, 7)).type_as(hybridization_type).scatter_(1, hybridization_type, 1)
         nodes = torch.cat((element_type, charge_type, hybridization_type), dim=-1)
         edges_shape = edges.shape
         edges = torch.argmax(edges, axis=-1).unsqueeze(-1)

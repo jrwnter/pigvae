@@ -2,6 +2,7 @@ import torch
 from torch.nn import Linear, BatchNorm1d
 from graphae.fully_connected import FNN
 from torch_geometric.nn import GATConv
+from pivae.dds import DDSBlock
 
 import math
 from typing import Union, Tuple, Optional
@@ -153,42 +154,37 @@ class TransformerConv(MessagePassing):
 
 
 
-"""class EdgeDecoder(torch.nn.Module):
-    def __init__(self, node_dim, hidden_dim, num_nodes, num_layers,
-                 num_edge_features, non_lin, batch_norm):
+class  NodeEmbDecoder(torch.nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, num_layers, num_heads, non_lin, batch_norm):
         super().__init__()
-        self.num_nodes = num_nodes
-        self.node_dim = node_dim
         self.hidden_dim = hidden_dim
-        self.num_edge_features = num_edge_features + 1
         self.dds_block = DDSBlock(
-            input_dim=2*node_dim,
+            input_dim=input_dim,
             hidden_dim=hidden_dim,
-            output_dim=self.num_edge_features,
+            output_dim=output_dim,
             num_layers=num_layers,
             aggregate_inner="max",
             aggregate_outer=None,
             non_linearity=non_lin,
-            batch_norm=batch_norm,
+            batch_norm=False,
         )
 
-    def forward(self, x, edge_index, edge_index_batch):
+    def forward(self, x, batch):
         # x [batch_size, node_dim]
         # edge_index: dense edge_index (all combinations of num_nodes)
         # edge_index_batch: batch_idx of edge index
-        x = torch.cat((x[edge_index[0]], x[edge_index[1]]), dim=-1)
-        x = self.dds_block(x, edge_index_batch)
-        return x"""
+        x = self.dds_block(x, batch)
+        return x
 
 
-class NodeEmbDecoder(torch.nn.Module):
+"""class NodeEmbDecoder(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, num_layers, num_heads, non_lin, batch_norm):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
         self.batch_norm = batch_norm
-        self.layers = [TransformerConv(input_dim, hidden_dim, num_heads)]
-        self.layers += [TransformerConv(num_heads * hidden_dim, hidden_dim, num_heads) for _ in range(num_layers - 1)]
+        self.layers = [GATConv(input_dim, hidden_dim, num_heads)]
+        self.layers += [GATConv(num_heads * hidden_dim, hidden_dim, num_heads) for _ in range(num_layers - 1)]
         self.layers = torch.nn.ModuleList(self.layers)
         self.linear_out = Linear(num_heads * hidden_dim, output_dim)
         if batch_norm:
@@ -213,7 +209,7 @@ class NodeEmbDecoder(torch.nn.Module):
         x = self.linear_out(x)
         x = self.bn_layers[-1](x)
         x = self.non_lin(x)
-        return x
+        return x"""
 
 class EdgeTypePredictor(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, num_layers, non_lin, batch_norm):

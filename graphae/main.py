@@ -32,7 +32,7 @@ def main(hparams):
     datamodule = MolecularGraphDataModule(
         data_path="smiles_{}_atoms.csv".format(hparams.max_num_nodes),
         batch_size=hparams.batch_size,
-        num_nodes=hparams.max_num_nodes,
+        max_num_nodes=hparams.max_num_nodes,
         num_eval_samples=hparams.num_eval_samples,
         num_workers=hparams.num_workers,
         debug=hparams.test
@@ -46,13 +46,13 @@ def main(hparams):
         val_check_interval=hparams.eval_freq if not hparams.test else 1.0,
         #distributed_backend=None if hparams.gpus == 1 else "dp",
         #distributed_backend="ddp",
-        accelerator="ddp",
-        plugins=[my_ddp_plugin],
+        #accelerator="ddp",
+        #plugins=[my_ddp_plugin],
         gradient_clip_val=0.1,
         callbacks=[lr_logger],
         profiler=True,
         terminate_on_nan=True,
-        replace_sampler_ddp=False,
+        #replace_sampler_ddp=False,
         #resume_from_checkpoint="saves7/run{}/{}_last.ckpt".format(hparams.id, hparams.id)
     )
     trainer.fit(model=model, datamodule=datamodule)
