@@ -58,7 +58,7 @@ class GraphDecoder(torch.nn.Module):
         )
 
     def forward(self, x, edge_index, batch):
-        x = self.node_emb_decoder(x, batch)
+        x = self.node_emb_decoder(x, edge_index)
         node_logits = self.node_predictor(x)
         edge_logits = self.edge_predictor(x, edge_index)
         return node_logits, edge_logits

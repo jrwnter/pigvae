@@ -151,33 +151,7 @@ class TransformerConv(MessagePassing):
                                              self.out_channels, self.heads)
 
 
-
-
-
-class  NodeEmbDecoder(torch.nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, num_layers, num_heads, non_lin, batch_norm):
-        super().__init__()
-        self.hidden_dim = hidden_dim
-        self.dds_block = DDSBlock(
-            input_dim=input_dim,
-            hidden_dim=hidden_dim,
-            output_dim=output_dim,
-            num_layers=num_layers,
-            aggregate_inner="max",
-            aggregate_outer=None,
-            non_linearity=non_lin,
-            batch_norm=batch_norm,
-        )
-
-    def forward(self, x, batch):
-        # x [batch_size, node_dim]
-        # edge_index: dense edge_index (all combinations of num_nodes)
-        # edge_index_batch: batch_idx of edge index
-        x = self.dds_block(x, batch)
-        return x
-
-
-"""class NodeEmbDecoder(torch.nn.Module):
+class NodeEmbDecoder(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, num_layers, num_heads, non_lin, batch_norm):
         super().__init__()
         self.hidden_dim = hidden_dim
@@ -209,7 +183,7 @@ class  NodeEmbDecoder(torch.nn.Module):
         x = self.linear_out(x)
         x = self.bn_layers[-1](x)
         x = self.non_lin(x)
-        return x"""
+        return x
 
 class EdgeTypePredictor(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, num_layers, non_lin, batch_norm):
