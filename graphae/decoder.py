@@ -166,7 +166,7 @@ class  NodeEmbDecoder(torch.nn.Module):
             aggregate_inner="max",
             aggregate_outer=None,
             non_linearity=non_lin,
-            batch_norm=False,
+            batch_norm=batch_norm,
         )
 
     def forward(self, x, batch):

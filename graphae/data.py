@@ -41,14 +41,14 @@ class MolecularGraphDataModule(pl.LightningDataModule):
         self.eval_dataset = MolecularGraphDatasetFromSmiles(
             smiles_list=smiles_df.iloc[:self.num_eval_samples].smiles.tolist(),
         )
-        """self.train_sampler = DistributedSampler(
+        self.train_sampler = DistributedSampler(
             dataset=self.train_dataset,
             shuffle=True
         )
         self.eval_sampler = DistributedSampler(
             dataset=self.eval_dataset,
             shuffle=False
-        )"""
+        )
 
     def train_dataloader(self):
         return DataLoader(
@@ -56,7 +56,7 @@ class MolecularGraphDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=True,
-            #sampler=self.train_sampler,
+            sampler=self.train_sampler,
         )
 
     def val_dataloader(self):
@@ -65,7 +65,7 @@ class MolecularGraphDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=True,
-            #sampler=self.eval_sampler,
+            sampler=self.eval_sampler,
         )
 
 

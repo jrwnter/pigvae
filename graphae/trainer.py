@@ -72,15 +72,16 @@ class PLGraphAE(pl.LightningModule):
             training=True,
             tau=tau
         )
-        metrics_soft = self.critic(
+        metrics_soft = self.critic.evaluate(
             nodes_true=nodes_true,
             edges_true=edges_true,
             nodes_pred=nodes_pred,
             edges_pred=edges_pred,
             perm=perm,
             mask=mask,
+            prefix="val",
         )
-        """nodes_pred, edges_pred, perm, mask = self(
+        nodes_pred, edges_pred, perm, mask = self(
             graph=graph,
             training=False,
             tau=tau
@@ -94,15 +95,8 @@ class PLGraphAE(pl.LightningModule):
             mask=mask,
             prefix="val_hard",
         )
-        metrics = {**metrics_soft, **metrics_hard}"""
-        metrics = metrics_soft
-        """metrics2 = {}
-        for key in metrics.keys():
-            new_key = "val_" + str(key)
-            metrics2[new_key] = metrics[key]
-        metrics = metrics2"""
-        #self.log_dict(metrics)
-        self.log("val_loss", metrics["loss"], on_step=True, on_epoch=True)
+        metrics = {**metrics_soft, **metrics_hard}
+        self.log_dict(metrics)
 
     def on_epoch_end(self):
         self.tau_scheduler()
