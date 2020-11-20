@@ -3,26 +3,51 @@ from torch.nn import Linear, Parameter
 from graphae import encoder, decoder
 
 
+"""class GraphEncoder(torch.nn.Module):
+    def __init__(self, hparams):
+        super().__init__()
+        self.num_nodes = hparams["max_num_nodes"]
+        self.encoder = encoder.GraphEncoder(
+            input_dim=hparams["num_node_features"],
+            hidden_dim=hparams["graph_encoder_hidden_dim"],
+            num_layers=hparams["graph_encoder_num_layers"],
+            output_dim=hparams["node_dim"],
+            edge_dim=hparams["num_edge_features"] + 1,
+            num_heads=4,
+            batch_norm=hparams["batch_norm"],
+            non_lin=hparams["nonlin"]
+        )
+
+    def forward(self, graph):
+        node_embs = self.encoder(
+            x=graph.x,
+            edge_index=graph.dense_edge_index,
+            edge_attr=graph.dense_edge_attr,
+        )
+        return node_embs"""
+
+
 class GraphEncoder(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
         self.num_nodes = hparams["max_num_nodes"]
         self.encoder = encoder.GraphEncoder(
             input_dim=hparams["num_node_features"],
-            hidden_dim_gnn=hparams["graph_encoder_hidden_dim_gnn"],
-            hidden_dim_fnn=hparams["graph_encoder_hidden_dim_fnn"],
-            num_layers_gnn=hparams["graph_encoder_num_layers_gnn"],
-            num_layers_fnn=hparams["graph_encoder_num_layers_fnn"],
-            node_dim=hparams["node_dim"],
-            num_nodes=hparams["max_num_nodes"],
-            num_edge_features=hparams["num_edge_features"],
+            hidden_dim=hparams["graph_encoder_hidden_dim"],
+            num_layers=hparams["graph_encoder_num_layers"],
+            output_dim=hparams["node_dim"],
+            edge_dim=hparams["num_edge_features"],
+            num_heads=4,
             batch_norm=hparams["batch_norm"],
-            non_linearity=hparams["nonlin"],
-            stack_node_emb=hparams["stack_node_emb"]
+            non_lin=hparams["nonlin"]
         )
 
     def forward(self, graph):
-        node_embs = self.encoder(graph)
+        node_embs = self.encoder(
+            x=graph.x,
+            edge_index=graph.edge_index,
+            edge_attr=graph.edge_attr,
+        )
         return node_embs
 
 

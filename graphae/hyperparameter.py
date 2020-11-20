@@ -49,11 +49,8 @@ def add_arguments(parser):
 
     # GRAPH ENCODER
     parser.add_argument("--node_dim", default=32, type=int)
-    parser.add_argument("--graph_encoder_hidden_dim_gnn", default=1024, type=int)
-    parser.add_argument("--graph_encoder_hidden_dim_fnn", default=1024, type=int)
-    parser.add_argument("--graph_encoder_num_layers_gnn", default=7, type=int)
-    parser.add_argument("--graph_encoder_num_layers_fnn", default=3, type=int)
-    parser.add_argument("--stack_node_emb", default=1, type=int)
+    parser.add_argument("--graph_encoder_hidden_dim", default=1024, type=int)
+    parser.add_argument("--graph_encoder_num_layers", default=7, type=int)
 
     # GRAPH DECODER
 
