@@ -22,8 +22,8 @@ ELEMENT_TYPE_WEIGHTS = torch.Tensor(
 CHARGE_TYPE_WEIGHTS = torch.Tensor([0.2594, 0.2594, 0.2211, 0.2594, 0.0006])
 HYBRIDIZATION_TYPE_WEIGHT = torch.Tensor(
     [3.3249e-01, 5.4122e-06, 1.4856e-07, 1.5068e-07, 2.5381e-03, 3.3249e-01, 3.3249e-01])
-EDGE_WEIGHTS = torch.Tensor([0.0091, 0.0891, 0.8833, 0.0175, 0.0009])
-MASK_POS_WEIGHT = torch.Tensor([0.1214])
+#EDGE_WEIGHTS = torch.Tensor([0.0091, 0.0891, 0.8833, 0.0175, 0.0009])
+EDGE_WEIGHTS = torch.Tensor([0.0091, 0.0891, 0.8833, 0.0175, 0.0091])
 
 
 # TODO: make metric for loss. Right now does not sync correctly, I guess?

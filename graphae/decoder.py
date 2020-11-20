@@ -157,8 +157,8 @@ class NodeEmbDecoder(torch.nn.Module):
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
         self.batch_norm = batch_norm
-        self.layers = [GATConv(input_dim, hidden_dim, num_heads)]
-        self.layers += [GATConv(num_heads * hidden_dim, hidden_dim, num_heads) for _ in range(num_layers - 1)]
+        self.layers = [TransformerConv(input_dim, hidden_dim, num_heads)]
+        self.layers += [TransformerConv(num_heads * hidden_dim, hidden_dim, num_heads) for _ in range(num_layers - 1)]
         self.layers = torch.nn.ModuleList(self.layers)
         self.linear_out = Linear(num_heads * hidden_dim, output_dim)
         if batch_norm:

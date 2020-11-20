@@ -47,6 +47,7 @@ class PLGraphAE(pl.LightningModule):
     def training_step(self, graph, batch_idx):
         nodes_true, edges_true = graph.x, graph.dense_edge_attr
         tau = self.tau_scheduler.tau
+        self.log("tau", tau)
         nodes_pred, edges_pred, perm, mask = self(
             graph=graph,
             training=True,
@@ -100,7 +101,6 @@ class PLGraphAE(pl.LightningModule):
 
     def on_epoch_end(self):
         self.tau_scheduler()
-        self.log("tau", self.tau_scheduler.tau)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.graph_ae.parameters(), lr=self.hparams["lr"])

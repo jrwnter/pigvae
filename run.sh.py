@@ -270,3 +270,10 @@ python graphae/main.py -i 27 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --no
 python graphae/main.py -i 28 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 0 1 2 3 --progress_bar --alpha 0.5
 
 
+
+
+
+python graphae/main.py -i 21 --batch_norm --lr 0.0001 -b 128 --node_dim 256 --emb_dim 1024  -g 5 6 7 8 --progress_bar --alpha 0.5 --max_num_nodes 16 --eval_freq 250 --node_emb_decoder_hidden_dim 2048 --pi_encoder_hidden_dim 2048
+
+
+
