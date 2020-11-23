@@ -27,8 +27,15 @@ class GraphEncoder(torch.nn.Module):
     def forward(self, x, edge_index, edge_attr):
         # x [batch_size, node_dim]
         # edge_index: dense edge_index (all combinations of num_nodes)
+        mask = (torch.arange(edge_index.size(1)) % 2).bool()
         for i in range(self.num_layers):
-            x = self.layers[i](x, edge_index, edge_attr)
+            if i % 2 == 0:
+                ei = edge_index[:, ~mask]
+                ea = edge_attr[~mask]
+            else:
+                ei = edge_index[:, mask]
+                ea = edge_attr[mask]
+            x = self.layers[i](x, ei, ea)
             if self.batch_norm:
                 x = self.bn_layers[i](x)
             x = self.non_lin(x)

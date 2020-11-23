@@ -51,12 +51,12 @@ def add_arguments(parser):
     # GRAPH ENCODER
     parser.add_argument("--node_dim", default=256, type=int)
     parser.add_argument("--graph_encoder_hidden_dim", default=1024, type=int)
-    parser.add_argument("--graph_encoder_num_layers", default=3, type=int)
+    parser.add_argument("--graph_encoder_num_layers", default=4, type=int)
 
     # GRAPH DECODER
 
     parser.add_argument("--node_emb_decoder_hidden_dim", default=1024, type=int)
-    parser.add_argument("--node_emb_decoder_num_layers", default=3, type=int)
+    parser.add_argument("--node_emb_decoder_num_layers", default=4, type=int)
 
     parser.add_argument("--edge_decoder_hidden_dim", default=1024, type=int)
     parser.add_argument("--edge_decoder_num_layers", default=3, type=int)

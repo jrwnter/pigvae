@@ -100,6 +100,7 @@ class MolecularGraphDatasetFromSmiles(Dataset):
         graph = MolecularGraph.from_smiles(smiles)
         graph.dense_edge_index = self.dense_edge_index(graph)
         graph.dense_edge_attr = self.dense_edge_attr(graph)
+
         return graph
 
 
