@@ -5,25 +5,26 @@ from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss, L1Loss, MSELoss, Tripl
 from pytorch_lightning.metrics.classification import Recall, Precision, Accuracy
 
 # 32
-"""ELEMENT_TYPE_WEIGHTS = torch.Tensor([
+ELEMENT_TYPE_WEIGHTS = torch.Tensor([
     1.1111e-04, 6.9739e-04, 7.9399e-04, 4.8409e-03, 5.1567e-03, 2.6155e-01,
     2.7761e-01, 8.4134e-03, 1.8924e-02, 1.4429e-01, 2.7761e-01])
 CHARGE_TYPE_WEIGHTS = torch.Tensor([0.2596, 0.2596, 0.2205, 0.2596, 0.0006])
 HYBRIDIZATION_TYPE_WEIGHT = torch.Tensor(
     [2.4989e-01, 4.4300e-04, 4.6720e-06, 7.8765e-06, 2.4989e-01, 2.4989e-01, 2.4989e-01])
-EDGE_WEIGHTS = torch.Tensor([5.4339e-03, 4.5212e-02, 9.4218e-01, 6.8846e-03, 2.8955e-04])
+#EDGE_WEIGHTS = torch.Tensor([5.4339e-03, 4.5212e-02, 9.4218e-01, 6.8846e-03, 2.8955e-04])
+EDGE_WEIGHTS = torch.Tensor([1, 10, 100, 1, 1])
 MASK_POS_WEIGHT = torch.Tensor([0.3221])
 
-# 16"""
+# 16
 
-ELEMENT_TYPE_WEIGHTS = torch.Tensor(
+"""ELEMENT_TYPE_WEIGHTS = torch.Tensor(
     [0.0003, 0.0017, 0.0021, 0.0103, 0.0120, 0.2837, 0.2500, 0.0170, 0.0247,
      0.1144, 0.2837])
 CHARGE_TYPE_WEIGHTS = torch.Tensor([0.2594, 0.2594, 0.2211, 0.2594, 0.0006])
 HYBRIDIZATION_TYPE_WEIGHT = torch.Tensor(
     [3.3249e-01, 5.4122e-06, 1.4856e-07, 1.5068e-07, 2.5381e-03, 3.3249e-01, 3.3249e-01])
 #EDGE_WEIGHTS = torch.Tensor([0.0091, 0.0891, 0.8833, 0.0175, 0.0009])
-EDGE_WEIGHTS = torch.Tensor([0.0091, 0.0891, 0.8833, 0.0175, 0.0091])
+EDGE_WEIGHTS = torch.Tensor([0.0091, 0.0891, 0.8833, 0.0175, 0.0091])"""
 
 
 # TODO: make metric for loss. Right now does not sync correctly, I guess?
@@ -46,14 +47,14 @@ class Critic(torch.nn.Module):
         self.edge_precision = Precision(num_classes=5)
         self.edge_accuracy = Accuracy()
 
-    def forward(self, nodes_true, edges_true, nodes_pred, edges_pred, perm, mask):
+    def forward(self, nodes_true, edges_true, nodes_pred, edges_pred, perm):
         recon_loss = self.reconstruction_loss(
             nodes_true=nodes_true,
             edges_true=edges_true,
             nodes_pred=nodes_pred,
             edges_pred=edges_pred,
         )
-        perm_loss = self.perm_loss(perm, mask)
+        perm_loss = self.perm_loss(perm)
         loss = {**recon_loss, "perm_loss": perm_loss}
         loss["loss"] = loss["loss"] + self.alpha * perm_loss
         #loss = recon_loss
@@ -100,14 +101,13 @@ class Critic(torch.nn.Module):
         }
         return metrics
 
-    def evaluate(self, nodes_true, edges_true, nodes_pred, edges_pred, perm, mask, prefix=None):
+    def evaluate(self, nodes_true, edges_true, nodes_pred, edges_pred, perm, prefix=None):
         loss = self(
             nodes_true=nodes_true,
             edges_true=edges_true,
             nodes_pred=nodes_pred,
             edges_pred=edges_pred,
             perm=perm,
-            mask=mask
         )
         node_metrics = self.node_metrics(
             nodes_pred=nodes_pred,
@@ -186,7 +186,7 @@ class PermutaionMatrixPenalty(torch.nn.Module):
         e = - torch.sum(p * torch.clamp_min(torch.log(p), -100), axis=axis)
         return e
 
-    def forward(self, perm, mask, eps=10e-8):
+    def forward(self, perm, eps=10e-8):
         perm = perm + eps
         entropy_col = self.entropy(perm, axis=1, normalize=False)
         entropy_row = self.entropy(perm, axis=2, normalize=False)

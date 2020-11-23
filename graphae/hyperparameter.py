@@ -34,6 +34,7 @@ def add_arguments(parser):
     parser.add_argument("--tf_decay_factor", default=0.9, type=float)
     parser.add_argument("--tf_decay_freq", default=20, type=int)
     parser.add_argument("--alpha", default=0.1, type=float)
+    parser.add_argument("--dropout", default=0.0, type=float)
     parser.add_argument("--emb_noise", default=0.05, type=float)
     parser.add_argument("--vae", dest='vae', action='store_true')
     parser.set_defaults(vae=False)
@@ -50,7 +51,7 @@ def add_arguments(parser):
     # GRAPH ENCODER
     parser.add_argument("--node_dim", default=32, type=int)
     parser.add_argument("--graph_encoder_hidden_dim", default=1024, type=int)
-    parser.add_argument("--graph_encoder_num_layers", default=7, type=int)
+    parser.add_argument("--graph_encoder_num_layers", default=3, type=int)
 
     # GRAPH DECODER
 

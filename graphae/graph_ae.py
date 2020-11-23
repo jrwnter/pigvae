@@ -3,7 +3,7 @@ from torch.nn import Linear, Parameter
 from graphae import encoder, decoder
 
 
-"""class GraphEncoder(torch.nn.Module):
+class GraphEncoder(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
         self.num_nodes = hparams["max_num_nodes"]
@@ -23,30 +23,6 @@ from graphae import encoder, decoder
             x=graph.x,
             edge_index=graph.dense_edge_index,
             edge_attr=graph.dense_edge_attr,
-        )
-        return node_embs"""
-
-
-class GraphEncoder(torch.nn.Module):
-    def __init__(self, hparams):
-        super().__init__()
-        self.num_nodes = hparams["max_num_nodes"]
-        self.encoder = encoder.GraphEncoder(
-            input_dim=hparams["num_node_features"],
-            hidden_dim=hparams["graph_encoder_hidden_dim"],
-            num_layers=hparams["graph_encoder_num_layers"],
-            output_dim=hparams["node_dim"],
-            edge_dim=hparams["num_edge_features"],
-            num_heads=4,
-            batch_norm=hparams["batch_norm"],
-            non_lin=hparams["nonlin"]
-        )
-
-    def forward(self, graph):
-        node_embs = self.encoder(
-            x=graph.x,
-            edge_index=graph.edge_index,
-            edge_attr=graph.edge_attr,
         )
         return node_embs
 

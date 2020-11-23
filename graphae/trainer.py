@@ -17,15 +17,15 @@ class PLGraphAE(pl.LightningModule):
         self.pi_ae = PIVAE(hparams)
         self.critic = Critic(hparams["alpha"])
         self.tau_scheduler = TauScheduler(
-            start_value=1.0,
-            factor=0.5,
-            step_size=1
+            start_value=0.5,
+            factor=0.95,
+            step_size=2
         )
 
     def forward(self, graph, training, tau, postprocess_method=None):
         postprocess_method = self.get_postprocess_method(postprocess_method)
         node_embs = self.graph_ae.encode(graph=graph)
-        node_embs_pred, perm, _, mask = self.pi_ae(
+        node_embs_pred, perm, _ = self.pi_ae(
             x=node_embs,
             batch=graph.batch,
             training=training,
@@ -42,13 +42,13 @@ class PLGraphAE(pl.LightningModule):
                 adj_logits=adj_logits,
                 method=postprocess_method,
             )
-        return node_logits, adj_logits, perm, mask
+        return node_logits, adj_logits, perm
 
     def training_step(self, graph, batch_idx):
         nodes_true, edges_true = graph.x, graph.dense_edge_attr
         tau = self.tau_scheduler.tau
         self.log("tau", tau)
-        nodes_pred, edges_pred, perm, mask = self(
+        nodes_pred, edges_pred, perm = self(
             graph=graph,
             training=True,
             tau=tau
@@ -59,7 +59,6 @@ class PLGraphAE(pl.LightningModule):
             nodes_pred=nodes_pred,
             edges_pred=edges_pred,
             perm=perm,
-            mask=mask
         )
         self.log("loss", loss["loss"])
         self.log("perm_loss", loss["perm_loss"], prog_bar=True)
@@ -68,7 +67,7 @@ class PLGraphAE(pl.LightningModule):
     def validation_step(self, graph, batch_idx):
         nodes_true, edges_true = graph.x, graph.dense_edge_attr
         tau = self.tau_scheduler.tau
-        nodes_pred, edges_pred, perm, mask = self(
+        nodes_pred, edges_pred, perm = self(
             graph=graph,
             training=True,
             tau=tau
@@ -79,10 +78,9 @@ class PLGraphAE(pl.LightningModule):
             nodes_pred=nodes_pred,
             edges_pred=edges_pred,
             perm=perm,
-            mask=mask,
             prefix="val",
         )
-        nodes_pred, edges_pred, perm, mask = self(
+        nodes_pred, edges_pred, perm = self(
             graph=graph,
             training=False,
             tau=tau
@@ -93,14 +91,15 @@ class PLGraphAE(pl.LightningModule):
             nodes_pred=nodes_pred,
             edges_pred=edges_pred,
             perm=perm,
-            mask=mask,
             prefix="val_hard",
         )
         metrics = {**metrics_soft, **metrics_hard}
         self.log_dict(metrics)
 
-    def on_epoch_end(self):
+    def on_validation_epoch_end(self):
         self.tau_scheduler()
+    """def on_epoch_end(self):
+        self.tau_scheduler()"""
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.graph_ae.parameters(), lr=self.hparams["lr"])

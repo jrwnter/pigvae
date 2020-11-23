@@ -30,7 +30,7 @@ def main(hparams):
     tb_logger = TensorBoardLogger(hparams.save_dir + "/run{}/".format(hparams.id))
     model = PLGraphAE(hparams.__dict__)
     datamodule = MolecularGraphDataModule(
-        data_path="smiles_{}_atoms.csv".format(hparams.max_num_nodes),
+        data_path=hparams.data_path,
         batch_size=hparams.batch_size,
         max_num_nodes=hparams.max_num_nodes,
         num_eval_samples=hparams.num_eval_samples,
@@ -53,7 +53,7 @@ def main(hparams):
         profiler=True,
         terminate_on_nan=True,
         replace_sampler_ddp=False,
-        #resume_from_checkpoint="saves7/run{}/{}_last.ckpt".format(hparams.id, hparams.id)
+        #resume_from_checkpoint="saves11/run32/last.ckpt"
     )
     trainer.fit(model=model, datamodule=datamodule)
 
