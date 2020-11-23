@@ -39,9 +39,11 @@ class NodeEmbDecoder(torch.nn.Module):
         x = self.non_lin(x)
         return x
 
+
 class EdgeTypePredictor(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, num_layers, non_lin, batch_norm):
         super().__init__()
+        self.output_dim = output_dim
         self.fnn = FNN(
             input_dim=2*input_dim,
             hidden_dim=hidden_dim,
@@ -56,6 +58,10 @@ class EdgeTypePredictor(torch.nn.Module):
         # dense_edge_index: dense edge_index (all combinations of num_nodes)
         x = torch.cat((x[dense_edge_index[0]], x[dense_edge_index[1]]), dim=-1)
         x = self.fnn(x)  # [num_dense_edges, num_edges_types + 1]
+        # we defined dense_edge_index in such a way, that both directional follow after each other --> we can average
+        # every 2 edges and repeat to get same prediction in both directions
+        x = x.view(-1, 2, self.output_dim).mean(dim=1)
+        x = torch.repeat_interleave(x, 2, dim=0)
         return x
 
 

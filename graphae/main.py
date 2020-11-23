@@ -53,6 +53,8 @@ def main(hparams):
         profiler=True,
         terminate_on_nan=True,
         replace_sampler_ddp=False,
+        #precision=16,
+        #amp_level='O2'
         #resume_from_checkpoint="saves11/run32/last.ckpt"
     )
     trainer.fit(model=model, datamodule=datamodule)
