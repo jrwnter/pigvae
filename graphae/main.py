@@ -44,18 +44,15 @@ def main(hparams):
         logger=tb_logger,
         checkpoint_callback=checkpoint_callback,
         val_check_interval=hparams.eval_freq if not hparams.test else 1.0,
-        #distributed_backend=None if hparams.gpus == 1 else "dp",
-        #distributed_backend="ddp",
         accelerator="ddp",
         plugins=[my_ddp_plugin],
-        gradient_clip_val=0.1,
+        #gradient_clip_val=0.1,
         callbacks=[lr_logger],
         profiler=True,
         terminate_on_nan=True,
         replace_sampler_ddp=False,
-        #precision=16,
-        #amp_level='O2'
-        #resume_from_checkpoint="saves11/run32/last.ckpt"
+        precision=16,
+        resume_from_checkpoint="saves11/run38/last.ckpt"
     )
     trainer.fit(model=model, datamodule=datamodule)
 

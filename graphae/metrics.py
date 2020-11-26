@@ -34,7 +34,7 @@ class Critic(torch.nn.Module):
         self.alpha = alpha
         self.reconstruction_loss = GraphReconstructionLoss()
         self.perm_loss = PermutaionMatrixPenalty()
-        self.element_type_recall = Recall(num_classes=11)
+        """self.element_type_recall = Recall(num_classes=11)
         self.element_type_precision = Precision(num_classes=11)
         self.element_type_accuracy = Accuracy()
         self.charge_type_recall = Recall(num_classes=5)
@@ -45,7 +45,7 @@ class Critic(torch.nn.Module):
         self.hybridization_type_accuracy = Accuracy()
         self.edge_recall = Recall(num_classes=5)
         self.edge_precision = Precision(num_classes=5)
-        self.edge_accuracy = Accuracy()
+        self.edge_accuracy = Accuracy()"""
 
     def forward(self, nodes_true, edges_true, nodes_pred, edges_pred, perm):
         recon_loss = self.reconstruction_loss(

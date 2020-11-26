@@ -13,6 +13,8 @@ HYBRIDIZATION_TYPE_LIST = [Chem.rdchem.HybridizationType.S, Chem.rdchem.Hybridiz
                            Chem.rdchem.HybridizationType.SP2, Chem.rdchem.HybridizationType.SP3,
                            Chem.rdchem.HybridizationType.SP3D, Chem.rdchem.HybridizationType.SP3D2,
                            Chem.rdchem.HybridizationType.UNSPECIFIED]
+BOND_LIST = [Chem.rdchem.BondType.SINGLE, Chem.rdchem.BondType.DOUBLE,
+             Chem.rdchem.BondType.TRIPLE, Chem.rdchem.BondType.AROMATIC]
 HS_LIST = [0, 1, 2, 3]
 NUM_ELEMENTS = len(ELEM_LIST)
 
@@ -194,6 +196,7 @@ def one_hot_atom_features(atom):
     atom_feat.extend(one_hot_encoding(atom.GetSymbol(), ELEM_LIST))
     atom_feat.extend(one_hot_encoding(atom.GetFormalCharge(), CHARGE_LIST))
     atom_feat.extend(one_hot_encoding(atom.GetHybridization(), HYBRIDIZATION_TYPE_LIST))
+    #atom_feat.extend(one_hot_encoding(atom.GetNumExplicitHs(), HS_LIST))
     #atom_feat.extend([atom.GetIsAromatic()])
     return atom_feat
 
@@ -219,25 +222,29 @@ def rdkit_mol_from_graph(graph):
     charge = [CHARGE_LIST[idx] for idx in charge]
     hybridization = torch.where(graph.x[:, NUM_ELEMENTS + 5: NUM_ELEMENTS + 5 + 7] == 1)[1].tolist()
     hybridization = [HYBRIDIZATION_TYPE_LIST[idx] for idx in hybridization]
-    is_aromatic = graph.x[:, -1].bool().tolist()
-    bonds = []
+    #num_hs = torch.where(graph.x[:, NUM_ELEMENTS + 5 + 7: NUM_ELEMENTS + 5 + 7 + 4] == 1)[1].tolist()
+    #num_hs = [HS_LIST[idx] for idx in num_hs]
+    #is_aromatic = graph.x[:, -1].bool().tolist()
+    bonds = {}
+    bond_type = torch.where(graph.edge_attr[:, :4] == 1)[1].tolist()
     for i in range(graph.edge_index.shape[1]):
         edge_idx = tuple(graph.edge_index[:, i].tolist())
         edge_idx_reversed = (edge_idx[1], edge_idx[0])
         if (edge_idx not in bonds) & (edge_idx_reversed not in bonds):
-            bonds.append(edge_idx)
+            bonds[edge_idx] = BOND_LIST[bond_type[i]]
     mol = Chem.RWMol()
-    Chem.SanitizeMol(mol)
     for i in range(num_atoms):
         atom = Chem.Atom(atom_type[i])
-        atom.SetIsAromatic(is_aromatic[i])
+        #atom.SetIsAromatic(is_aromatic[i])
         atom.SetFormalCharge(charge[i])
+        #atom.SetNumExplicitHs(num_hs[i])
         atom.SetHybridization(hybridization[i])
         mol.AddAtom(atom)
-    for bond in bonds:
-        mol.AddBond(bond[0], bond[1])
-    mol = mol.GetMol()
-    return mol
+    for bond, bond_type in bonds.items():
+        mol.AddBond(bond[0], bond[1], bond_type)
+    m = mol.GetMol()
+    Chem.SanitizeMol(m)
+    return m
 
 
 def add_noise(x, adj, mask, std=0.01):
