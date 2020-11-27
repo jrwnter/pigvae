@@ -55,7 +55,6 @@ def main(hparams):
         #precision=16,
         reload_dataloaders_every_epoch=True
         #resume_from_checkpoint="saves11/run39/last.ckpt"
-        resume_from_checkpoint="saves9/run{}/last.ckpt".format(hparams.id, hparams.id)
     )
     trainer.fit(model=model, datamodule=datamodule)
 

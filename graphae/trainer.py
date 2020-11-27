@@ -102,17 +102,6 @@ class PLGraphAE(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.graph_ae.parameters(), lr=self.hparams["lr"])
-        """lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer=optimizer,
-            factor=0.5,
-            patience=20000,
-            min_lr=1e-6,
-        )
-        scheduler = {
-            'scheduler': lr_scheduler,
-            'interval': 'step',
-            'monitor': 'loss',
-        }"""
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer=optimizer,
             step_size=10,
@@ -140,8 +129,6 @@ class PLGraphAE(pl.LightningModule):
         return postprocess_method
 
 
-
-
 class TauScheduler(object):
     def __init__(self, start_value, factor, step_size):
         self.tau = start_value
@@ -154,6 +141,7 @@ class TauScheduler(object):
         if self.steps >= self.step_size:
             self.tau *= self.factor
             self.steps = 0
+
 
 class GraphSizeScheduler(object):
     def __init__(self, start_value, increment=1, step_size=1):
