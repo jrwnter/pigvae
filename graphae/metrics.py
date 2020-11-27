@@ -109,7 +109,7 @@ class Critic(torch.nn.Module):
             edges_pred=edges_pred,
             perm=perm,
         )
-        node_metrics = self.node_metrics(
+        """node_metrics = self.node_metrics(
             nodes_pred=nodes_pred,
             nodes_true=nodes_true,
         )
@@ -117,7 +117,8 @@ class Critic(torch.nn.Module):
             edges_pred=edges_pred,
             edges_true=edges_true,
         )
-        metrics = {**loss, **node_metrics, **edge_metrics}
+        metrics = {**loss, **node_metrics, **edge_metrics}"""
+        metrics = loss
 
         if prefix is not None:
             metrics2 = {}
@@ -133,7 +134,8 @@ class GraphReconstructionLoss(torch.nn.Module):
         super().__init__()
         self.element_type_loss = CrossEntropyLoss(weight=ELEMENT_TYPE_WEIGHTS)
         self.charge_type_loss = CrossEntropyLoss(weight=CHARGE_TYPE_WEIGHTS)
-        self.hybridization_type_loss = CrossEntropyLoss(weight=HYBRIDIZATION_TYPE_WEIGHT)
+        #self.hybridization_type_loss = CrossEntropyLoss(weight=HYBRIDIZATION_TYPE_WEIGHT)
+        self.explicit_hydrogen_loss = CrossEntropyLoss()
         self.edge_loss = CrossEntropyLoss(weight=EDGE_WEIGHTS)
 
     def forward(self, nodes_true, edges_true, nodes_pred, edges_pred):
@@ -149,11 +151,17 @@ class GraphReconstructionLoss(torch.nn.Module):
             input=charge_type_pred,
             target=charge_type_true
         )
-        hybridization_type_pred = nodes_pred[:, 16:]
+        """hybridization_type_pred = nodes_pred[:, 16:]
         hybridization_type_true = torch.argmax(nodes_true[:, 16:], axis=-1).flatten()
         hybridization_type_loss = self.hybridization_type_loss(
             input=hybridization_type_pred,
             target=hybridization_type_true
+        )"""
+        explicit_hydrogen_pred = nodes_pred[:, 16:]
+        explicit_hydrogen_true = torch.argmax(nodes_true[:, 16:], axis=-1).flatten()
+        explicit_hydrogen_loss = self.explicit_hydrogen_loss(
+            input=explicit_hydrogen_pred,
+            target=explicit_hydrogen_true
         )
 
         edges_true = torch.argmax(edges_true, axis=-1).flatten()
@@ -161,12 +169,14 @@ class GraphReconstructionLoss(torch.nn.Module):
             input=edges_pred,
             target=edges_true
         )
-        node_loss = (element_type_loss + charge_type_loss + hybridization_type_loss) / 3
+        #node_loss = (element_type_loss + charge_type_loss + hybridization_type_loss) / 3
+        node_loss = (element_type_loss + charge_type_loss + explicit_hydrogen_loss) / 3
         total_loss = node_loss + edge_loss
         loss = {
             "element_type_loss": element_type_loss,
             "charge_type_loss": charge_type_loss,
-            "hybridization_type_loss": hybridization_type_loss,
+            #"hybridization_type_loss": hybridization_type_loss,
+            "explicit_hydrogen_loss": explicit_hydrogen_loss,
             "edge_loss": edge_loss,
             "node_loss": node_loss,
             "loss": total_loss

@@ -1,6 +1,6 @@
 import os
 DEFAULT_DATA_PATH = "/home/ggwaq/projects/graph_vae/smiles_atom_count2.csv"
-DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves11")
+DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves12")
 
 
 def add_arguments(parser):
@@ -15,10 +15,11 @@ def add_arguments(parser):
     # GENERAL
     parser.add_argument('--test', dest='test', action='store_true')
     parser.add_argument('-i', '--id', type=int, default=0)
-    parser.add_argument('-g', '--gpus', default=1, type=int, nargs='+')
-    parser.add_argument('-e', '--num_epochs', default=50, type=int)
+    parser.add_argument('-g', '--gpus', default=1, type=int)
+    parser.add_argument('-e', '--num_epochs', default=5000, type=int)
     parser.add_argument("--num_eval_samples", default=50000, type=int)
-    parser.add_argument("--eval_freq", default=500, type=int)
+    parser.add_argument("--num_samples_per_epoch", default=2000000, type=int)
+    parser.add_argument("--eval_freq", default=1000, type=int)
     parser.add_argument("-s", "--save_dir", default=DEFAULT_SAVE_DIR, type=str)
     parser.add_argument('--progress_bar', dest='progress_bar', action='store_true')
     parser.set_defaults(test=False)
@@ -41,7 +42,7 @@ def add_arguments(parser):
 
     # GENERAL GRAPH PROPERTIES
     parser.add_argument("--max_num_nodes", default=16, type=int)
-    parser.add_argument("--num_node_features", default=23, type=int)
+    parser.add_argument("--num_node_features", default=20, type=int)
     parser.add_argument("--num_edge_features", default=4, type=int)
     parser.add_argument("--batch_norm", dest='batch_norm', action='store_true')
     parser.set_defaults(batch_norm=False)

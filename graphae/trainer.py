@@ -17,9 +17,9 @@ class PLGraphAE(pl.LightningModule):
         self.pi_ae = PIVAE(hparams)
         self.critic = Critic(hparams["alpha"])
         self.tau_scheduler = TauScheduler(
-            start_value=0.5,
+            start_value=1.0,
             factor=0.95,
-            step_size=3
+            step_size=2
         )
 
     def forward(self, graph, training, tau, postprocess_method=None):
@@ -47,7 +47,6 @@ class PLGraphAE(pl.LightningModule):
     def training_step(self, graph, batch_idx):
         nodes_true, edges_true = graph.x, graph.dense_edge_attr
         tau = self.tau_scheduler.tau
-        self.log("tau", tau)
         nodes_pred, edges_pred, perm = self(
             graph=graph,
             training=True,
@@ -62,6 +61,7 @@ class PLGraphAE(pl.LightningModule):
         )
         self.log("loss", loss["loss"])
         self.log("perm_loss", loss["perm_loss"], prog_bar=True)
+        self.log("tau", tau)
         return loss
 
     def validation_step(self, graph, batch_idx):
@@ -98,23 +98,29 @@ class PLGraphAE(pl.LightningModule):
 
     def on_validation_epoch_end(self):
         self.tau_scheduler()
-    """def on_epoch_end(self):
-        self.tau_scheduler()"""
+
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.graph_ae.parameters(), lr=self.hparams["lr"])
-        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        """lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
             factor=0.5,
-            patience=20,
-            cooldown=50,
+            patience=20000,
             min_lr=1e-6,
         )
         scheduler = {
             'scheduler': lr_scheduler,
             'interval': 'step',
-            'monitor': 'val_loss',
-            'frequency': self.hparams["eval_freq"] + 1
+            'monitor': 'loss',
+        }"""
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer=optimizer,
+            step_size=10,
+            gamma=0.5
+        )
+        scheduler = {
+            'scheduler': lr_scheduler,
+            'interval': 'epoch',
         }
         return [optimizer], [scheduler]
 
@@ -140,6 +146,19 @@ class TauScheduler(object):
     def __init__(self, start_value, factor, step_size):
         self.tau = start_value
         self.factor = factor
+        self.step_size = step_size
+        self.steps = 0
+
+    def __call__(self):
+        self.steps += 1
+        if self.steps >= self.step_size:
+            self.tau *= self.factor
+            self.steps = 0
+
+class GraphSizeScheduler(object):
+    def __init__(self, start_value, increment=1, step_size=1):
+        self.max_num_nodes = start_value
+        self.increment = increment
         self.step_size = step_size
         self.steps = 0
 

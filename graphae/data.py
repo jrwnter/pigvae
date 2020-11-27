@@ -20,12 +20,15 @@ NUM_ELEMENTS = len(ELEM_LIST)
 
 
 class MolecularGraphDataModule(pl.LightningDataModule):
-    def __init__(self, data_path, batch_size, max_num_nodes, num_eval_samples, num_workers=1, debug=False):
+    def __init__(self, data_path, batch_size, max_num_nodes, num_eval_samples, num_samples_per_epoch,
+                 num_workers=1, debug=False):
         super().__init__()
         self.data_path = data_path
         self.batch_size = batch_size
         self.max_num_nodes = max_num_nodes
         self.num_eval_samples = num_eval_samples
+        self.num_samples_per_epoch = num_samples_per_epoch
+        self.num_samples_per_epoch_inc = num_samples_per_epoch
         self.num_workers = num_workers
         self.debug = debug
         self.train_dataset = None
@@ -33,10 +36,13 @@ class MolecularGraphDataModule(pl.LightningDataModule):
         self.train_sampler = None
         self.eval_sampler = None
 
-    def setup(self, stage: str):
-        num_smiles = 1000000 if self.debug else None
-        smiles_df = pd.read_csv(self.data_path, nrows=num_smiles)
-        smiles_df = smiles_df[smiles_df.num_atoms <= self.max_num_nodes]
+    def setup(self, stage):
+        num_smiles = 100000 if self.debug else None
+        smiles_df = pd.read_csv(self.data_path, nrows=num_smiles, usecols=["smiles", "num_atoms"])
+        self.train_smiles_df = smiles_df.iloc[self.num_eval_samples:]
+        self.eval_smiles_df = smiles_df.iloc[:self.num_eval_samples]
+        #print(self.max_num_nodes)
+        """smiles_df = self.smiles_df[self.smiles_df.num_atoms <= self.max_num_nodes]
         self.train_dataset = MolecularGraphDatasetFromSmiles(
             smiles_list=smiles_df.iloc[self.num_eval_samples:].smiles.tolist(),
         )
@@ -51,23 +57,44 @@ class MolecularGraphDataModule(pl.LightningDataModule):
             dataset=self.eval_dataset,
             shuffle=False
         )
+        self.max_num_nodes += 1"""
 
     def train_dataloader(self):
+        print(self.max_num_nodes)
+        smiles_df = self.train_smiles_df[self.train_smiles_df.num_atoms <= self.max_num_nodes]
+        smiles_df = smiles_df.sample(frac=1.0).reset_index(drop=True)
+        smiles_df = smiles_df.iloc[:self.num_samples_per_epoch]
+        train_dataset = MolecularGraphDatasetFromSmiles(
+            smiles_list=smiles_df.smiles.tolist(),
+        )
+        train_sampler = DistributedSampler(
+            dataset=train_dataset,
+            shuffle=True
+        )
+        self.max_num_nodes += 1
+        self.num_samples_per_epoch += self.num_samples_per_epoch_inc
         return DataLoader(
-            dataset=self.train_dataset,
+            dataset=train_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=True,
-            sampler=self.train_sampler,
+            sampler=train_sampler,
         )
 
     def val_dataloader(self):
+        eval_dataset = MolecularGraphDatasetFromSmiles(
+            smiles_list=self.eval_smiles_df.smiles.tolist(),
+        )
+        eval_sampler = DistributedSampler(
+            dataset=eval_dataset,
+            shuffle=False
+        )
         return DataLoader(
-            dataset=self.eval_dataset,
+            dataset=eval_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=True,
-            sampler=self.eval_sampler,
+            sampler=eval_sampler,
         )
 
 
@@ -104,25 +131,6 @@ class MolecularGraphDatasetFromSmiles(Dataset):
         graph.dense_edge_attr = self.dense_edge_attr(graph)
 
         return graph
-
-
-class MolecularGraphDataset(Dataset):
-    def __init__(self, graphs, noise):
-        super().__init__()
-        self.graphs = graphs
-        self.noise = noise
-
-    def __len__(self):
-        return len(self.graphs)
-
-    def __getitem__(self, idx):
-        graph = self.graphs[idx]
-        x = torch.from_numpy(graph[:, :11])
-        adj = torch.from_numpy(graph[:, 24:40])
-        mask = torch.from_numpy(graph[:, 40])
-        if self.noise:
-            x, adj, mask = add_noise(x.detach().clone(), adj.detach().clone(), mask.detach().clone())
-        return x, adj, mask
 
 
 class MolecularGraph(Data):
@@ -195,8 +203,8 @@ def one_hot_atom_features(atom):
     atom_feat = []
     atom_feat.extend(one_hot_encoding(atom.GetSymbol(), ELEM_LIST))
     atom_feat.extend(one_hot_encoding(atom.GetFormalCharge(), CHARGE_LIST))
-    atom_feat.extend(one_hot_encoding(atom.GetHybridization(), HYBRIDIZATION_TYPE_LIST))
-    #atom_feat.extend(one_hot_encoding(atom.GetNumExplicitHs(), HS_LIST))
+    #atom_feat.extend(one_hot_encoding(atom.GetHybridization(), HYBRIDIZATION_TYPE_LIST))
+    atom_feat.extend(one_hot_encoding(atom.GetNumExplicitHs(), HS_LIST))
     #atom_feat.extend([atom.GetIsAromatic()])
     return atom_feat
 
@@ -220,10 +228,10 @@ def rdkit_mol_from_graph(graph):
     atom_type = [ELEM_LIST[idx] for idx in atom_type]
     charge = torch.where(graph.x[:, NUM_ELEMENTS:NUM_ELEMENTS + 5] == 1)[1].tolist()
     charge = [CHARGE_LIST[idx] for idx in charge]
-    hybridization = torch.where(graph.x[:, NUM_ELEMENTS + 5: NUM_ELEMENTS + 5 + 7] == 1)[1].tolist()
-    hybridization = [HYBRIDIZATION_TYPE_LIST[idx] for idx in hybridization]
-    #num_hs = torch.where(graph.x[:, NUM_ELEMENTS + 5 + 7: NUM_ELEMENTS + 5 + 7 + 4] == 1)[1].tolist()
-    #num_hs = [HS_LIST[idx] for idx in num_hs]
+    #hybridization = torch.where(graph.x[:, NUM_ELEMENTS + 5: NUM_ELEMENTS + 5 + 7] == 1)[1].tolist()
+    #hybridization = [HYBRIDIZATION_TYPE_LIST[idx] for idx in hybridization]
+    num_hs = torch.where(graph.x[:, NUM_ELEMENTS + 5: NUM_ELEMENTS + 5 + 4] == 1)[1].tolist()
+    num_hs = [HS_LIST[idx] for idx in num_hs]
     #is_aromatic = graph.x[:, -1].bool().tolist()
     bonds = {}
     bond_type = torch.where(graph.edge_attr[:, :4] == 1)[1].tolist()
@@ -237,8 +245,8 @@ def rdkit_mol_from_graph(graph):
         atom = Chem.Atom(atom_type[i])
         #atom.SetIsAromatic(is_aromatic[i])
         atom.SetFormalCharge(charge[i])
-        #atom.SetNumExplicitHs(num_hs[i])
-        atom.SetHybridization(hybridization[i])
+        atom.SetNumExplicitHs(num_hs[i])
+        #atom.SetHybridization(hybridization[i])
         mol.AddAtom(atom)
     for bond, bond_type in bonds.items():
         mol.AddBond(bond[0], bond[1], bond_type)
