@@ -1,7 +1,10 @@
 import torch
 from torch.utils.data import Dataset
+from torch.utils.data.distributed import DistributedSampler
+import pandas as pd
+import pytorch_lightning as pl
 from rdkit import Chem
-from torch_geometric.data import Data, Batch
+from torch_geometric.data import Data, Batch, DataLoader
 from torch_geometric.transforms import ToDense
 
 ELEM_LIST = ['C', 'N', 'O', 'S', 'F', 'Si', 'P', 'Cl', 'Br', 'I', 'H']
@@ -10,16 +13,111 @@ HYBRIDIZATION_TYPE_LIST = [Chem.rdchem.HybridizationType.S, Chem.rdchem.Hybridiz
                            Chem.rdchem.HybridizationType.SP2, Chem.rdchem.HybridizationType.SP3,
                            Chem.rdchem.HybridizationType.SP3D, Chem.rdchem.HybridizationType.SP3D2,
                            Chem.rdchem.HybridizationType.UNSPECIFIED]
+BOND_LIST = [Chem.rdchem.BondType.SINGLE, Chem.rdchem.BondType.DOUBLE,
+             Chem.rdchem.BondType.TRIPLE, Chem.rdchem.BondType.AROMATIC]
 HS_LIST = [0, 1, 2, 3]
 NUM_ELEMENTS = len(ELEM_LIST)
 
 
+class MolecularGraphDataModule(pl.LightningDataModule):
+    def __init__(self, data_path, batch_size, max_num_nodes, num_eval_samples, num_samples_per_epoch,
+                 num_workers=1, debug=False):
+        super().__init__()
+        self.data_path = data_path
+        self.batch_size = batch_size
+        self.max_num_nodes = max_num_nodes
+        self.num_eval_samples = num_eval_samples
+        self.num_samples_per_epoch = num_samples_per_epoch
+        self.num_samples_per_epoch_inc = num_samples_per_epoch
+        self.num_workers = num_workers
+        self.debug = debug
+        self.train_dataset = None
+        self.eval_dataset = None
+        self.train_sampler = None
+        self.eval_sampler = None
+
+    def setup(self, stage):
+        num_smiles = 100000 if self.debug else None
+        smiles_df = pd.read_csv(self.data_path, nrows=num_smiles, usecols=["smiles", "num_atoms"])
+        self.train_smiles_df = smiles_df.iloc[self.num_eval_samples:]
+        self.eval_smiles_df = smiles_df.iloc[:self.num_eval_samples]
+        #print(self.max_num_nodes)
+        """smiles_df = self.smiles_df[self.smiles_df.num_atoms <= self.max_num_nodes]
+        self.train_dataset = MolecularGraphDatasetFromSmiles(
+            smiles_list=smiles_df.iloc[self.num_eval_samples:].smiles.tolist(),
+        )
+        self.eval_dataset = MolecularGraphDatasetFromSmiles(
+            smiles_list=smiles_df.iloc[:self.num_eval_samples].smiles.tolist(),
+        )
+        self.train_sampler = DistributedSampler(
+            dataset=self.train_dataset,
+            shuffle=True
+        )
+        self.eval_sampler = DistributedSampler(
+            dataset=self.eval_dataset,
+            shuffle=False
+        )
+        self.max_num_nodes += 1"""
+
+    def train_dataloader(self):
+        print(self.max_num_nodes)
+        smiles_df = self.train_smiles_df[self.train_smiles_df.num_atoms <= self.max_num_nodes]
+        smiles_df = smiles_df.sample(frac=1.0).reset_index(drop=True)
+        smiles_df = smiles_df.iloc[:self.num_samples_per_epoch]
+        train_dataset = MolecularGraphDatasetFromSmiles(
+            smiles_list=smiles_df.smiles.tolist(),
+        )
+        train_sampler = DistributedSampler(
+            dataset=train_dataset,
+            shuffle=True
+        )
+        self.max_num_nodes += 2
+        self.num_samples_per_epoch += self.num_samples_per_epoch_inc
+        return DataLoader(
+            dataset=train_dataset,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            pin_memory=True,
+            sampler=train_sampler,
+        )
+
+    def val_dataloader(self):
+        eval_dataset = MolecularGraphDatasetFromSmiles(
+            smiles_list=self.eval_smiles_df.smiles.tolist(),
+        )
+        eval_sampler = DistributedSampler(
+            dataset=eval_dataset,
+            shuffle=False
+        )
+        return DataLoader(
+            dataset=eval_dataset,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            pin_memory=True,
+            sampler=eval_sampler,
+        )
+
+
 class MolecularGraphDatasetFromSmiles(Dataset):
-    def __init__(self, smiles_list, num_nodes, randomize_smiles=True):
+    def __init__(self, smiles_list, randomize_smiles=True):
         super().__init__()
         self.smiles = smiles_list
-        self.dense_transform = ToDense(num_nodes=num_nodes)
         self.randomize_smiles = randomize_smiles
+
+    def dense_edge_index(self, graph):
+        num_elements = graph.x.size(0)
+        edge_index = torch.combinations(torch.arange(num_elements), 2).transpose(1, 0)
+        edge_index = torch.cat((edge_index, edge_index[[1, 0]]), dim=0).transpose(1, 0).reshape(-1, 2).transpose(1, 0)
+        return edge_index
+
+    def dense_edge_attr(self, graph):
+        idx1, idx2 = torch.where(
+            (graph.dense_edge_index.unsqueeze(2) == graph.edge_index.unsqueeze(1)).all(dim=0))
+        dense_edge_attr = torch.cat((
+            torch.zeros(graph.dense_edge_index.size(1), graph.edge_attr.size(1)),
+            torch.ones(graph.dense_edge_index.size(1), 1)), dim=-1)
+        dense_edge_attr[idx1] = torch.cat((graph.edge_attr, torch.zeros(graph.edge_attr.size(0), 1)), dim=-1)[idx2]
+        return dense_edge_attr
 
     def __len__(self):
         return len(self.smiles)
@@ -28,32 +126,11 @@ class MolecularGraphDatasetFromSmiles(Dataset):
         smiles = self.smiles[idx]
         if self.randomize_smiles:
             smiles = Chem.MolToSmiles(Chem.MolFromSmiles(smiles), doRandom=True)
-        sparse_graph = MolecularGraph.from_smiles(smiles)
-        dense_graph = self.dense_transform(sparse_graph.clone())
-        dense_graph.x = dense_graph.x.unsqueeze(0)
-        dense_graph.adj = dense_graph.adj.unsqueeze(0)
-        dense_graph.adj = add_empty_edge_type(dense_graph.adj)
-        dense_graph.mask = dense_graph.mask.unsqueeze(0)
-        return sparse_graph, dense_graph
+        graph = MolecularGraph.from_smiles(smiles)
+        graph.dense_edge_index = self.dense_edge_index(graph)
+        graph.dense_edge_attr = self.dense_edge_attr(graph)
 
-
-class MolecularGraphDataset(Dataset):
-    def __init__(self, graphs, noise):
-        super().__init__()
-        self.graphs = graphs
-        self.noise = noise
-
-    def __len__(self):
-        return len(self.graphs)
-
-    def __getitem__(self, idx):
-        graph = self.graphs[idx]
-        x = torch.from_numpy(graph[:, :11])
-        adj = torch.from_numpy(graph[:, 24:40])
-        mask = torch.from_numpy(graph[:, 40])
-        if self.noise:
-            x, adj, mask = add_noise(x.detach().clone(), adj.detach().clone(), mask.detach().clone())
-        return x, adj, mask
+        return graph
 
 
 class MolecularGraph(Data):
@@ -126,7 +203,8 @@ def one_hot_atom_features(atom):
     atom_feat = []
     atom_feat.extend(one_hot_encoding(atom.GetSymbol(), ELEM_LIST))
     atom_feat.extend(one_hot_encoding(atom.GetFormalCharge(), CHARGE_LIST))
-    atom_feat.extend(one_hot_encoding(atom.GetHybridization(), HYBRIDIZATION_TYPE_LIST))
+    #atom_feat.extend(one_hot_encoding(atom.GetHybridization(), HYBRIDIZATION_TYPE_LIST))
+    atom_feat.extend(one_hot_encoding(atom.GetNumExplicitHs(), HS_LIST))
     #atom_feat.extend([atom.GetIsAromatic()])
     return atom_feat
 
@@ -150,27 +228,34 @@ def rdkit_mol_from_graph(graph):
     atom_type = [ELEM_LIST[idx] for idx in atom_type]
     charge = torch.where(graph.x[:, NUM_ELEMENTS:NUM_ELEMENTS + 5] == 1)[1].tolist()
     charge = [CHARGE_LIST[idx] for idx in charge]
-    hybridization = torch.where(graph.x[:, NUM_ELEMENTS + 5: NUM_ELEMENTS + 5 + 7] == 1)[1].tolist()
-    hybridization = [HYBRIDIZATION_TYPE_LIST[idx] for idx in hybridization]
-    is_aromatic = graph.x[:, -1].bool().tolist()
-    bonds = []
+    #hybridization = torch.where(graph.x[:, NUM_ELEMENTS + 5: NUM_ELEMENTS + 5 + 7] == 1)[1].tolist()
+    #hybridization = [HYBRIDIZATION_TYPE_LIST[idx] for idx in hybridization]
+    num_hs = torch.where(graph.x[:, NUM_ELEMENTS + 5: NUM_ELEMENTS + 5 + 4] == 1)[1].tolist()
+    num_hs = [HS_LIST[idx] for idx in num_hs]
+    #is_aromatic = graph.x[:, -1].bool().tolist()
+    bonds = {}
+    bond_type = torch.where(graph.edge_attr[:, :4] == 1)[1].tolist()
     for i in range(graph.edge_index.shape[1]):
         edge_idx = tuple(graph.edge_index[:, i].tolist())
         edge_idx_reversed = (edge_idx[1], edge_idx[0])
         if (edge_idx not in bonds) & (edge_idx_reversed not in bonds):
-            bonds.append(edge_idx)
+            bonds[edge_idx] = BOND_LIST[bond_type[i]]
     mol = Chem.RWMol()
-    Chem.SanitizeMol(mol)
     for i in range(num_atoms):
         atom = Chem.Atom(atom_type[i])
-        atom.SetIsAromatic(is_aromatic[i])
+        #atom.SetIsAromatic(is_aromatic[i])
         atom.SetFormalCharge(charge[i])
-        atom.SetHybridization(hybridization[i])
+        atom.SetNumExplicitHs(num_hs[i])
+        #atom.SetHybridization(hybridization[i])
         mol.AddAtom(atom)
-    for bond in bonds:
-        mol.AddBond(bond[0], bond[1])
-    mol = mol.GetMol()
-    return mol
+    for bond, bond_type in bonds.items():
+        mol.AddBond(bond[0], bond[1], bond_type)
+    m = mol.GetMol()
+    try:
+        Chem.SanitizeMol(m)
+        return m
+    except:
+        return None
 
 
 def add_noise(x, adj, mask, std=0.01):

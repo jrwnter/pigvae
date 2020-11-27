@@ -203,10 +203,77 @@ CUDA_VISIBLE_DEVICES=12 python graphae/main.py -i 44 --batch_norm  --lr 0.0001 -
 CUDA_VISIBLE_DEVICES=4 python graphae/main.py -i 45 --batch_norm  --lr 0.0001 -b 256 --emb_dim 2048 --node_dim 1024 --pi_decoder_gumbel_tau 0.5 --pi_encoder_hidden_dim 4096 &
 # no tf
 CUDA_VISIBLE_DEVICES=10 python graphae/main.py -i 46 --batch_norm  --lr 0.0001 -b 256 --emb_dim 2048 --node_dim 1024 --pi_decoder_gumbel_tau 0.5 --pi_encoder_hidden_dim 4096 &
+CUDA_VISIBLE_DEVICES=0 python graphae/main.py -i 47 --batch_norm  --lr 0.0001 -b 256 --emb_dim 2048 --node_dim 1024 --pi_decoder_gumbel_tau 0.5 --pi_encoder_hidden_dim 4096 &
 
 
 # with linear transform to higher element emb
 CUDA_VISIBLE_DEVICES=2 python graphae/main.py -i 27 --batch_norm  --lr 0.00005 -b 256 --emb_dim 1024 --node_dim 64 --element_emb_dim 1024 &
+
+# no tf saves 10 tau decay 0.9
+
+CUDA_VISIBLE_DEVICES=0 python graphae/main.py -i 1 --batch_norm  --lr 0.0001 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 &
+# again with new metrics
+CUDA_VISIBLE_DEVICES=1 python graphae/main.py -i 2 --batch_norm  --lr 0.0001 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 &
+# ddp
+python graphae/main.py -i 1  --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 0 1 2 3 &
+python graphae/main.py -i 2  --batch_norm --lr 0.0001 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 9 10 &
+
+# new decoder (with dds and assignment decoding after node decoding(split)
+python graphae/main.py -i 7 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 4 5 6 7 &
+
+# perm prediction
+python graphae/main.py -i 8 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 8 9 10 11 &
+python graphae/main.py -i 10 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 0 1 2 3 --alpha 0.5 &
+
+#perm inference, no dds decoder block
+
+python graphae/main.py -i 9 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 8 9 10 11 &
+
+
+# only dds decoder no rnn no perm loss
+python graphae/main.py -i 11 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 0 1 2 3 --alpha 0.5 &
+
+# no perm --> obvioulsy fails
+python graphae/main.py -i 13 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 0 1 2 3 --progress_bar
+
+# permuter softsort
+python graphae/main.py -i 14 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 0 1 2 3 --progress_bar
+# hard=False, tau decay
+python graphae/main.py -i 15 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 12 13 14 15 --progress_bar
+# order on norm
+python graphae/main.py -i 16 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 3 4 5 6  --progress_bar
+python graphae/main.py -i 17 --batch_norm --lr 0.0001 -b 256 --emb_dim 1024 --node_dim 256 --pi_encoder_hidden_dim 1024 -g 0 1 2 3  --progress_bar
+# set2set encoder
+python graphae/main.py -i 18 --batch_norm --lr 0.0001 -b 256 --emb_dim 1024 --node_dim 256 --pi_encoder_hidden_dim 1024 -g 7 8 9 10  --progress_bar
+
+# linear permuter
+python graphae/main.py -i 19 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 0 1 2 3 --progress_bar
+# again with faster tau decay
+python graphae/main.py -i 21 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 0 1 2 3 --progress_bar
+python graphae/main.py -i 22 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 4 5 6 7 --progress_bar
+python graphae/main.py -i 23 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 8 9 10 11 --progress_bar --alpha 0.5
+python graphae/main.py -i 25 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 0 1 2 3 --progress_bar --alpha 1.0
+# noise on encoded node embs
+python graphae/main.py -i 26 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 0 1 2 3 --progress_bar --alpha 0.5
+
+
+# hard = True
+python graphae/main.py -i 20 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 0 1 2 3 --progress_bar
+
+# hard=False, dds permuter
+python graphae/main.py -i 24 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 0 1 2 3 --progress_bar --alpha 0.5
+#again with noise
+python graphae/main.py -i 27 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 0 1 2 3 --progress_bar --alpha 0.5
+
+
+# just graph vae but without mask
+python graphae/main.py -i 28 --batch_norm --lr 0.0002 -b 256 --emb_dim 2048 --node_dim 1024 --pi_encoder_hidden_dim 4096 -g 0 1 2 3 --progress_bar --alpha 0.5
+
+
+
+
+
+python graphae/main.py -i 21 --batch_norm --lr 0.0001 -b 128 --node_dim 256 --emb_dim 1024  -g 5 6 7 8 --progress_bar --alpha 0.5 --max_num_nodes 16 --eval_freq 250 --node_emb_decoder_hidden_dim 2048 --pi_encoder_hidden_dim 2048
 
 
 
