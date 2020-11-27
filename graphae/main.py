@@ -52,7 +52,7 @@ def main(hparams):
         profiler=True,
         terminate_on_nan=True,
         replace_sampler_ddp=False,
-        #precision=16,
+        precision=16,
         reload_dataloaders_every_epoch=True
         #resume_from_checkpoint="saves11/run39/last.ckpt"
     )
