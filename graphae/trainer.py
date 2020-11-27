@@ -2,6 +2,7 @@ import pytorch_lightning as pl
 from graphae.graph_ae import GraphAE
 from graphae.metrics import *
 from pivae.vae import PIVAE
+from graphae.data import get_mask_for_batch
 from graphae.ddp import MyDistributedDataParallel
 
 
@@ -24,9 +25,11 @@ class PLGraphAE(pl.LightningModule):
 
     def forward(self, graph, training, tau, postprocess_method=None):
         postprocess_method = self.get_postprocess_method(postprocess_method)
+        mask = get_mask_for_batch(batch=graph.batch, device=graph.x.device)
         node_embs = self.graph_ae.encode(graph=graph)
-        node_embs_pred, perm, _ = self.pi_ae(
+        node_embs_pred, perm, eos, mu, logvar = self.pi_ae(
             x=node_embs,
+            mask=mask,
             batch=graph.batch,
             training=training,
             tau=tau
@@ -42,12 +45,12 @@ class PLGraphAE(pl.LightningModule):
                 adj_logits=adj_logits,
                 method=postprocess_method,
             )
-        return node_logits, adj_logits, perm
+        return node_logits, adj_logits, perm, mask, eos, mu, logvar
 
     def training_step(self, graph, batch_idx):
         nodes_true, edges_true = graph.x, graph.dense_edge_attr
         tau = self.tau_scheduler.tau
-        nodes_pred, edges_pred, perm = self(
+        nodes_pred, edges_pred, perm, mask, eos, mu, logvar = self(
             graph=graph,
             training=True,
             tau=tau
@@ -58,16 +61,18 @@ class PLGraphAE(pl.LightningModule):
             nodes_pred=nodes_pred,
             edges_pred=edges_pred,
             perm=perm,
+            mask=mask,
+            eos=eos,
+            mu=mu,
+            logvar=logvar
         )
-        self.log("loss", loss["loss"])
-        self.log("perm_loss", loss["perm_loss"], prog_bar=True)
-        self.log("tau", tau)
+        self.log_dict(loss)
         return loss
 
     def validation_step(self, graph, batch_idx):
         nodes_true, edges_true = graph.x, graph.dense_edge_attr
         tau = self.tau_scheduler.tau
-        nodes_pred, edges_pred, perm = self(
+        nodes_pred, edges_pred, perm, mask, eos, mu, logvar = self(
             graph=graph,
             training=True,
             tau=tau
@@ -78,9 +83,13 @@ class PLGraphAE(pl.LightningModule):
             nodes_pred=nodes_pred,
             edges_pred=edges_pred,
             perm=perm,
+            mask=mask,
+            eos=eos,
+            mu=mu,
+            logvar=logvar,
             prefix="val",
         )
-        nodes_pred, edges_pred, perm = self(
+        nodes_pred, edges_pred, perm, mask, eos, mu, logvar = self(
             graph=graph,
             training=False,
             tau=tau
@@ -91,6 +100,10 @@ class PLGraphAE(pl.LightningModule):
             nodes_pred=nodes_pred,
             edges_pred=edges_pred,
             perm=perm,
+            mask=mask,
+            eos=eos,
+            mu=mu,
+            logvar=logvar,
             prefix="val_hard",
         )
         metrics = {**metrics_soft, **metrics_hard}

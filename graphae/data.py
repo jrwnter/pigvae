@@ -65,7 +65,7 @@ class MolecularGraphDataModule(pl.LightningDataModule):
         smiles_df = smiles_df.sample(frac=1.0).reset_index(drop=True)
         smiles_df = smiles_df.iloc[:self.num_samples_per_epoch]
         train_dataset = MolecularGraphDatasetFromSmiles(
-            smiles_list=smiles_df.smiles.tolist(),
+            smiles_list=smiles_df.smiles.tolist()
         )
         train_sampler = DistributedSampler(
             dataset=train_dataset,
@@ -83,7 +83,7 @@ class MolecularGraphDataModule(pl.LightningDataModule):
 
     def val_dataloader(self):
         eval_dataset = MolecularGraphDatasetFromSmiles(
-            smiles_list=self.eval_smiles_df.smiles.tolist(),
+            smiles_list=self.eval_smiles_df.smiles.tolist()
         )
         eval_sampler = DistributedSampler(
             dataset=eval_dataset,
@@ -129,7 +129,6 @@ class MolecularGraphDatasetFromSmiles(Dataset):
         graph = MolecularGraph.from_smiles(smiles)
         graph.dense_edge_index = self.dense_edge_index(graph)
         graph.dense_edge_attr = self.dense_edge_attr(graph)
-
         return graph
 
 
@@ -305,4 +304,17 @@ def batch_to_dense(batch, num_nodes):
     x = torch.stack(x, dim=0)
     adj = torch.stack(adj, dim=0)
     return x, adj
+
+
+def get_mask_for_batch(batch, device):
+    num_elements = torch.bincount(batch)
+    max_len = num_elements.max()
+    batch_size = len(num_elements)
+    mask = torch.where(
+        torch.arange(max_len, device=device).unsqueeze(0) < num_elements.unsqueeze(1),
+        torch.ones((batch_size, max_len), device=device),
+        torch.zeros((batch_size, max_len), device=device)
+    )
+    mask = mask.bool()
+    return mask
 
