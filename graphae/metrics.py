@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from sklearn.metrics import balanced_accuracy_score
-from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss
+from torch.nn import CrossEntropyLoss, MSELoss
 
 # 32
 ELEMENT_TYPE_WEIGHTS = torch.Tensor([
@@ -37,7 +37,7 @@ class Critic(torch.nn.Module):
             "eos_loss": eos_loss,
             "kld_loss": kld_loss
         }
-        loss["loss"] = loss["loss"] + self.alpha * kld_loss + eos_loss
+        loss["loss"] = loss["loss"] + self.alpha * kld_loss + 0.01 * eos_loss
         return loss
 
     def evaluate(self, nodes_true, edges_true, nodes_pred, edges_pred, perm, mask, eos, mu, logvar, prefix=None):
@@ -112,14 +112,13 @@ class GraphReconstructionLoss(torch.nn.Module):
 class EndOfSequenceLoss(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.eos_loss = BCEWithLogitsLoss()
+        self.eos_loss = MSELoss()
 
     def forward(self, eos_pred, mask):
-        eos_true = ~ mask
-        eos_true = eos_true.float()
+        eos_true = mask.float().sum(axis=1)
         loss = self.eos_loss(
-            input=eos_pred.flatten(),
-            target=eos_true.flatten()
+            input=eos_pred,
+            target=eos_true
         )
         return loss
 
