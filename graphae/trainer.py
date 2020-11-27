@@ -19,7 +19,7 @@ class PLGraphAE(pl.LightningModule):
         self.tau_scheduler = TauScheduler(
             start_value=1.0,
             factor=0.95,
-            step_size=2
+            step_size=5
         )
 
     def forward(self, graph, training, tau, postprocess_method=None):

@@ -71,7 +71,7 @@ class MolecularGraphDataModule(pl.LightningDataModule):
             dataset=train_dataset,
             shuffle=True
         )
-        self.max_num_nodes += 1
+        self.max_num_nodes += 2
         self.num_samples_per_epoch += self.num_samples_per_epoch_inc
         return DataLoader(
             dataset=train_dataset,
@@ -251,8 +251,11 @@ def rdkit_mol_from_graph(graph):
     for bond, bond_type in bonds.items():
         mol.AddBond(bond[0], bond[1], bond_type)
     m = mol.GetMol()
-    Chem.SanitizeMol(m)
-    return m
+    try:
+        Chem.SanitizeMol(m)
+        return m
+    except:
+        return None
 
 
 def add_noise(x, adj, mask, std=0.01):
