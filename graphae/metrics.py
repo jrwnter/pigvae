@@ -37,7 +37,7 @@ class Critic(torch.nn.Module):
             "eos_loss": eos_loss,
             "kld_loss": kld_loss
         }
-        loss["loss"] = loss["loss"] + self.alpha * kld_loss
+        loss["loss"] = loss["loss"] + self.alpha * kld_loss + eos_loss
         return loss
 
     def evaluate(self, nodes_true, edges_true, nodes_pred, edges_pred, perm, mask, eos, mu, logvar, prefix=None):
