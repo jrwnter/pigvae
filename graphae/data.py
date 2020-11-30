@@ -21,14 +21,14 @@ NUM_ELEMENTS = len(ELEM_LIST)
 
 class MolecularGraphDataModule(pl.LightningDataModule):
     def __init__(self, data_path, batch_size, max_num_nodes, num_eval_samples, num_samples_per_epoch,
-                 num_workers=1, debug=False):
+                 num_samples_per_epoch_inc, num_workers=1, debug=False):
         super().__init__()
         self.data_path = data_path
         self.batch_size = batch_size
         self.max_num_nodes = max_num_nodes
         self.num_eval_samples = num_eval_samples
         self.num_samples_per_epoch = num_samples_per_epoch
-        self.num_samples_per_epoch_inc = num_samples_per_epoch
+        self.num_samples_per_epoch_inc = num_samples_per_epoch_inc
         self.num_workers = num_workers
         self.debug = debug
         self.train_dataset = None

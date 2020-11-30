@@ -12,12 +12,14 @@ class PLGraphAE(pl.LightningModule):
         hparams["max_num_elements"] = hparams["max_num_nodes"]
         hparams["element_dim"] = hparams["node_dim"]
         hparams["element_emb_dim"] = hparams["node_dim"]
+        if "tau" not in hparams:
+            hparams["tau"] = 1.0
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
         self.pi_ae = PIVAE(hparams)
         self.critic = Critic(hparams["alpha"])
         self.tau_scheduler = TauScheduler(
-            start_value=1.0,
+            start_value=hparams["tau"],
             factor=0.95,
             step_size=5
         )
@@ -59,8 +61,7 @@ class PLGraphAE(pl.LightningModule):
             edges_pred=edges_pred,
             perm=perm,
         )
-        self.log("loss", loss["loss"])
-        self.log("perm_loss", loss["perm_loss"], prog_bar=True)
+        self.log_dict(loss)
         self.log("tau", tau)
         return loss
 

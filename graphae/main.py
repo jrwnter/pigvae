@@ -35,6 +35,7 @@ def main(hparams):
         max_num_nodes=hparams.max_num_nodes,
         num_eval_samples=hparams.num_eval_samples,
         num_samples_per_epoch=hparams.num_samples_per_epoch,
+        num_samples_per_epoch_inc=hparams.num_samples_per_epoch_inc,
         num_workers=hparams.num_workers,
         debug=hparams.test
     )
@@ -52,9 +53,9 @@ def main(hparams):
         profiler=True,
         terminate_on_nan=True,
         replace_sampler_ddp=False,
-        precision=16,
-        reload_dataloaders_every_epoch=True
-        #resume_from_checkpoint="saves11/run39/last.ckpt"
+        precision=hparams.precision,
+        reload_dataloaders_every_epoch=True,
+        resume_from_checkpoint=hparams.resume_ckpt if hparams.resume_ckpt != "" else None
     )
     trainer.fit(model=model, datamodule=datamodule)
 
