@@ -72,6 +72,11 @@ def add_arguments(parser):
     parser.add_argument("--postprocess_method", default=0, type=int)
     parser.add_argument("--postprocess_temp", default=1.0, type=float)
 
+    # PROPERTY PREDICTOR
+    parser.add_argument("--property_predictor_hidden_dim", default=1024, type=int)
+    parser.add_argument("--property_predictor_num_layers", default=3, type=int)
+    parser.add_argument("--num_properties", default=7, type=int)
+
     # PI ENCODER
     parser.add_argument("--emb_dim", default=1024, type=int)
     parser.add_argument("--element_emb_dim", default=32, type=int)

@@ -3,6 +3,7 @@ from graphae.graph_ae import GraphAE
 from graphae.metrics import *
 from pivae.vae import PIVAE
 from graphae.data import get_mask_for_batch
+from graphae.side_tasks import PropertyPredictor
 from graphae.ddp import MyDistributedDataParallel
 
 
@@ -18,6 +19,7 @@ class PLGraphAE(pl.LightningModule):
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
         self.pi_ae = PIVAE(hparams)
+        self.property_predictor = PropertyPredictor(hparams)
         self.critic = Critic(hparams["alpha"])
         self.tau_scheduler = TauScheduler(
             start_value=hparams["tau"],
