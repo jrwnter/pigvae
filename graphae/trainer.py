@@ -3,6 +3,7 @@ from graphae.graph_ae import GraphAE
 from graphae.metrics import *
 from pivae.vae import PIVAE
 from graphae.data import get_mask_for_batch
+from graphae.side_tasks import PropertyPredictor
 from graphae.ddp import MyDistributedDataParallel
 
 
@@ -13,12 +14,15 @@ class PLGraphAE(pl.LightningModule):
         hparams["max_num_elements"] = hparams["max_num_nodes"]
         hparams["element_dim"] = hparams["node_dim"]
         hparams["element_emb_dim"] = hparams["node_dim"]
+        if "tau" not in hparams:
+            hparams["tau"] = 1.0
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
         self.pi_ae = PIVAE(hparams)
+        self.property_predictor = PropertyPredictor(hparams)
         self.critic = Critic(hparams["alpha"])
         self.tau_scheduler = TauScheduler(
-            start_value=1.0,
+            start_value=hparams["tau"],
             factor=0.95,
             step_size=5
         )
@@ -27,7 +31,7 @@ class PLGraphAE(pl.LightningModule):
         postprocess_method = self.get_postprocess_method(postprocess_method)
         mask = get_mask_for_batch(batch=graph.batch, device=graph.x.device)
         node_embs = self.graph_ae.encode(graph=graph)
-        node_embs_pred, perm, eos, mu, logvar = self.pi_ae(
+        node_embs_pred, perm, graph_emb, mu, logvar = self.pi_ae(
             x=node_embs,
             mask=mask,
             batch=graph.batch,
@@ -39,18 +43,19 @@ class PLGraphAE(pl.LightningModule):
             edge_index=graph.dense_edge_index,
             batch=graph.batch
         )
+        props_pred = self.property_predictor(graph_emb)
         if postprocess_method is not None:
             node_logits, adj_logits = self.postprocess_logits(
                 node_logits=node_logits,
                 adj_logits=adj_logits,
                 method=postprocess_method,
             )
-        return node_logits, adj_logits, perm, mask, eos, mu, logvar
+        return node_logits, adj_logits, perm, props_pred, mu, logvar
 
     def training_step(self, graph, batch_idx):
-        nodes_true, edges_true = graph.x, graph.dense_edge_attr
+        nodes_true, edges_true, props_true = graph.x, graph.dense_edge_attr, graph.mol_properties
         tau = self.tau_scheduler.tau
-        nodes_pred, edges_pred, perm, mask, eos, mu, logvar = self(
+        nodes_pred, edges_pred, perm, props_pred, mu, logvar = self(
             graph=graph,
             training=True,
             tau=tau
@@ -61,18 +66,19 @@ class PLGraphAE(pl.LightningModule):
             nodes_pred=nodes_pred,
             edges_pred=edges_pred,
             perm=perm,
-            mask=mask,
-            eos=eos,
+            props_true=props_true,
+            props_pred=props_pred,
             mu=mu,
             logvar=logvar
         )
         self.log_dict(loss)
+        self.log("tau", tau)
         return loss
 
     def validation_step(self, graph, batch_idx):
-        nodes_true, edges_true = graph.x, graph.dense_edge_attr
+        nodes_true, edges_true, props_true = graph.x, graph.dense_edge_attr, graph.mol_properties
         tau = self.tau_scheduler.tau
-        nodes_pred, edges_pred, perm, mask, eos, mu, logvar = self(
+        nodes_pred, edges_pred, perm, props_pred, mu, logvar = self(
             graph=graph,
             training=True,
             tau=tau
@@ -83,13 +89,13 @@ class PLGraphAE(pl.LightningModule):
             nodes_pred=nodes_pred,
             edges_pred=edges_pred,
             perm=perm,
-            mask=mask,
-            eos=eos,
+            props_true=props_true,
+            props_pred=props_pred,
             mu=mu,
             logvar=logvar,
             prefix="val",
         )
-        nodes_pred, edges_pred, perm, mask, eos, mu, logvar = self(
+        nodes_pred, edges_pred, perm, props_pred, mu, logvar = self(
             graph=graph,
             training=False,
             tau=tau
@@ -100,8 +106,8 @@ class PLGraphAE(pl.LightningModule):
             nodes_pred=nodes_pred,
             edges_pred=edges_pred,
             perm=perm,
-            mask=mask,
-            eos=eos,
+            props_true=props_true,
+            props_pred=props_pred,
             mu=mu,
             logvar=logvar,
             prefix="val_hard",

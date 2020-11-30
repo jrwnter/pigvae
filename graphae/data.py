@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from torch.utils.data import Dataset
 from torch.utils.data.distributed import DistributedSampler
@@ -17,18 +18,20 @@ BOND_LIST = [Chem.rdchem.BondType.SINGLE, Chem.rdchem.BondType.DOUBLE,
              Chem.rdchem.BondType.TRIPLE, Chem.rdchem.BondType.AROMATIC]
 HS_LIST = [0, 1, 2, 3]
 NUM_ELEMENTS = len(ELEM_LIST)
+NUM_ATOMS_MEAN = 23.101
+NUM_ATOMS_STD = 6.652
 
 
 class MolecularGraphDataModule(pl.LightningDataModule):
     def __init__(self, data_path, batch_size, max_num_nodes, num_eval_samples, num_samples_per_epoch,
-                 num_workers=1, debug=False):
+                 num_samples_per_epoch_inc, num_workers=1, debug=False):
         super().__init__()
         self.data_path = data_path
         self.batch_size = batch_size
         self.max_num_nodes = max_num_nodes
         self.num_eval_samples = num_eval_samples
         self.num_samples_per_epoch = num_samples_per_epoch
-        self.num_samples_per_epoch_inc = num_samples_per_epoch
+        self.num_samples_per_epoch_inc = num_samples_per_epoch_inc
         self.num_workers = num_workers
         self.debug = debug
         self.train_dataset = None
@@ -38,7 +41,7 @@ class MolecularGraphDataModule(pl.LightningDataModule):
 
     def setup(self, stage):
         num_smiles = 100000 if self.debug else None
-        smiles_df = pd.read_csv(self.data_path, nrows=num_smiles, usecols=["smiles", "num_atoms"])
+        smiles_df = pd.read_csv(self.data_path, nrows=num_smiles, compression="gzip")
         self.train_smiles_df = smiles_df.iloc[self.num_eval_samples:]
         self.eval_smiles_df = smiles_df.iloc[:self.num_eval_samples]
         #print(self.max_num_nodes)
@@ -64,9 +67,7 @@ class MolecularGraphDataModule(pl.LightningDataModule):
         smiles_df = self.train_smiles_df[self.train_smiles_df.num_atoms <= self.max_num_nodes]
         smiles_df = smiles_df.sample(frac=1.0).reset_index(drop=True)
         smiles_df = smiles_df.iloc[:self.num_samples_per_epoch]
-        train_dataset = MolecularGraphDatasetFromSmiles(
-            smiles_list=smiles_df.smiles.tolist()
-        )
+        train_dataset = MolecularGraphDatasetFromSmilesDataFrame(df=smiles_df)
         train_sampler = DistributedSampler(
             dataset=train_dataset,
             shuffle=True
@@ -82,9 +83,7 @@ class MolecularGraphDataModule(pl.LightningDataModule):
         )
 
     def val_dataloader(self):
-        eval_dataset = MolecularGraphDatasetFromSmiles(
-            smiles_list=self.eval_smiles_df.smiles.tolist()
-        )
+        eval_dataset = MolecularGraphDatasetFromSmilesDataFrame(df=self.eval_smiles_df)
         eval_sampler = DistributedSampler(
             dataset=eval_dataset,
             shuffle=False
@@ -129,6 +128,31 @@ class MolecularGraphDatasetFromSmiles(Dataset):
         graph = MolecularGraph.from_smiles(smiles)
         graph.dense_edge_index = self.dense_edge_index(graph)
         graph.dense_edge_attr = self.dense_edge_attr(graph)
+
+        return graph
+
+
+class MolecularGraphDatasetFromSmilesDataFrame(MolecularGraphDatasetFromSmiles):
+    def __init__(self, df, randomize_smiles=True):
+        super().__init__(smiles_list=df.smiles.tolist())
+        self.df = df
+        self.randomize_smiles = randomize_smiles
+        self.properties = [
+            "num_atoms", "logp", "mr", "balabanj", "num_h_acceptors", "num_h_donors", "num_valence_electrons", "tpsa"
+        ]
+
+    def __getitem__(self, idx):
+        smiles = self.df.iloc[idx].smiles
+        props = torch.from_numpy(self.df.loc[idx, self.properties].to_numpy().astype(np.float32))
+        props[0] = (props[0] - NUM_ATOMS_MEAN) / NUM_ATOMS_STD
+        props = props.unsqueeze(0)
+        if self.randomize_smiles:
+            smiles = Chem.MolToSmiles(Chem.MolFromSmiles(smiles), doRandom=True)
+        graph = MolecularGraph.from_smiles(smiles)
+        graph.dense_edge_index = self.dense_edge_index(graph)
+        graph.dense_edge_attr = self.dense_edge_attr(graph)
+        graph.mol_properties = props
+
         return graph
 
 

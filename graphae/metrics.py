@@ -18,10 +18,10 @@ class Critic(torch.nn.Module):
         self.alpha = alpha
         self.reconstruction_loss = GraphReconstructionLoss()
         self.perm_loss = PermutaionMatrixPenalty()
-        self.eos_loss = EndOfSequenceLoss()
+        self.property_loss = PropertyLoss()
         self.kld_loss = KLDLoss()
 
-    def forward(self, nodes_true, edges_true, nodes_pred, edges_pred, perm, mask, eos, mu, logvar):
+    def forward(self, nodes_true, edges_true, nodes_pred, edges_pred, perm, props_true, props_pred, mu, logvar):
         recon_loss = self.reconstruction_loss(
             nodes_true=nodes_true,
             edges_true=edges_true,
@@ -29,28 +29,32 @@ class Critic(torch.nn.Module):
             edges_pred=edges_pred,
         )
         perm_loss = self.perm_loss(perm)
-        eos_loss = self.eos_loss(eos, mask)
+        property_loss = self.property_loss(
+            input=props_pred,
+            target=props_true
+        )
         kld_loss = self.kld_loss(mu, logvar)
         loss = {
             **recon_loss,
             "perm_loss": perm_loss,
-            "eos_loss": eos_loss,
+            "property_loss": property_loss,
             "kld_loss": kld_loss
         }
-        loss["loss"] = loss["loss"] + self.alpha * kld_loss + 0.01 * eos_loss
+        loss["loss"] = loss["loss"] + self.alpha * kld_loss + 0.1 * property_loss
         return loss
 
-    def evaluate(self, nodes_true, edges_true, nodes_pred, edges_pred, perm, mask, eos, mu, logvar, prefix=None):
+    def evaluate(self, nodes_true, edges_true, nodes_pred, edges_pred, perm,
+                 props_true, props_pred, mu, logvar, prefix=None):
         loss = self(
             nodes_true=nodes_true,
             edges_true=edges_true,
             nodes_pred=nodes_pred,
             edges_pred=edges_pred,
-            mask=mask,
-            eos=eos,
+            perm=perm,
+            props_true=props_true,
+            props_pred=props_pred,
             mu=mu,
             logvar=logvar,
-            perm=perm,
         )
         metrics = loss
 
@@ -109,16 +113,15 @@ class GraphReconstructionLoss(torch.nn.Module):
         return loss
 
 
-class EndOfSequenceLoss(torch.nn.Module):
+class PropertyLoss(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.eos_loss = MSELoss()
+        self.mse_loss = MSELoss()
 
-    def forward(self, eos_pred, mask):
-        eos_true = mask.float().sum(axis=1)
-        loss = self.eos_loss(
-            input=eos_pred,
-            target=eos_true
+    def forward(self, input, target):
+        loss = self.mse_loss(
+            input=input,
+            target=target
         )
         return loss
 

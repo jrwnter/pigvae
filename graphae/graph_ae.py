@@ -1,5 +1,4 @@
 import torch
-from torch.nn import Linear, Parameter
 from graphae import encoder, decoder
 
 
