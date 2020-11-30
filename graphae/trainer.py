@@ -2,6 +2,7 @@ import pytorch_lightning as pl
 from graphae.graph_ae import GraphAE
 from graphae.metrics import *
 from pivae.vae import PIVAE
+from graphae.data import get_mask_for_batch
 from graphae.ddp import MyDistributedDataParallel
 
 
@@ -26,9 +27,11 @@ class PLGraphAE(pl.LightningModule):
 
     def forward(self, graph, training, tau, postprocess_method=None):
         postprocess_method = self.get_postprocess_method(postprocess_method)
+        mask = get_mask_for_batch(batch=graph.batch, device=graph.x.device)
         node_embs = self.graph_ae.encode(graph=graph)
-        node_embs_pred, perm, _ = self.pi_ae(
+        node_embs_pred, perm, eos, graph_emb = self.pi_ae(
             x=node_embs,
+            mask=mask,
             batch=graph.batch,
             training=training,
             tau=tau

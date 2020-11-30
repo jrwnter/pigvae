@@ -306,3 +306,16 @@ def batch_to_dense(batch, num_nodes):
     adj = torch.stack(adj, dim=0)
     return x, adj
 
+
+def get_mask_for_batch(batch, device):
+    num_elements = torch.bincount(batch)
+    max_len = num_elements.max()
+    batch_size = len(num_elements)
+    mask = torch.where(
+        torch.arange(max_len, device=device).unsqueeze(0) < num_elements.unsqueeze(1),
+        torch.ones((batch_size, max_len), device=device),
+        torch.zeros((batch_size, max_len), device=device)
+    )
+    mask = mask.bool()
+    return mask
+

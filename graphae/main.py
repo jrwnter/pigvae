@@ -48,7 +48,7 @@ def main(hparams):
         val_check_interval=hparams.eval_freq if not hparams.test else 1.0,
         accelerator="ddp",
         plugins=[my_ddp_plugin],
-        #gradient_clip_val=0.1,
+        gradient_clip_val=0.1,
         callbacks=[lr_logger],
         profiler=True,
         terminate_on_nan=True,
