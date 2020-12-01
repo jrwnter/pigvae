@@ -29,7 +29,7 @@ class PLGraphAE(pl.LightningModule):
         postprocess_method = self.get_postprocess_method(postprocess_method)
         mask = get_mask_for_batch(batch=graph.batch, device=graph.x.device)
         node_embs = self.graph_ae.encode(graph=graph)
-        node_embs_pred, perm, eos, graph_emb = self.pi_ae(
+        node_embs_pred, perm, graph_emb = self.pi_ae(
             x=node_embs,
             mask=mask,
             batch=graph.batch,
@@ -47,12 +47,12 @@ class PLGraphAE(pl.LightningModule):
                 adj_logits=adj_logits,
                 method=postprocess_method,
             )
-        return node_logits, adj_logits, perm
+        return node_logits, adj_logits, perm, graph_emb
 
     def training_step(self, graph, batch_idx):
         nodes_true, edges_true = graph.x, graph.dense_edge_attr
         tau = self.tau_scheduler.tau
-        nodes_pred, edges_pred, perm = self(
+        nodes_pred, edges_pred, perm, graph_emb = self(
             graph=graph,
             training=True,
             tau=tau
@@ -71,7 +71,7 @@ class PLGraphAE(pl.LightningModule):
     def validation_step(self, graph, batch_idx):
         nodes_true, edges_true = graph.x, graph.dense_edge_attr
         tau = self.tau_scheduler.tau
-        nodes_pred, edges_pred, perm = self(
+        nodes_pred, edges_pred, perm, graph_emb = self(
             graph=graph,
             training=True,
             tau=tau
@@ -84,7 +84,7 @@ class PLGraphAE(pl.LightningModule):
             perm=perm,
             prefix="val",
         )
-        nodes_pred, edges_pred, perm = self(
+        nodes_pred, edges_pred, perm, graph_emb = self(
             graph=graph,
             training=False,
             tau=tau
