@@ -73,7 +73,7 @@ def add_arguments(parser):
     parser.add_argument("--postprocess_temp", default=1.0, type=float)
 
     # PROPERTY PREDICTOR
-    parser.add_argument("--property_predictor_hidden_dim", default=1024, type=int)
+    parser.add_argument("--property_predictor_hidden_dim", default=128, type=int)
     parser.add_argument("--property_predictor_num_layers", default=3, type=int)
     parser.add_argument("--num_properties", default=8, type=int)
 
