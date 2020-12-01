@@ -44,23 +44,6 @@ class MolecularGraphDataModule(pl.LightningDataModule):
         smiles_df = pd.read_csv(self.data_path, nrows=num_smiles, compression="gzip")
         self.train_smiles_df = smiles_df.iloc[self.num_eval_samples:]
         self.eval_smiles_df = smiles_df.iloc[:self.num_eval_samples]
-        #print(self.max_num_nodes)
-        """smiles_df = self.smiles_df[self.smiles_df.num_atoms <= self.max_num_nodes]
-        self.train_dataset = MolecularGraphDatasetFromSmiles(
-            smiles_list=smiles_df.iloc[self.num_eval_samples:].smiles.tolist(),
-        )
-        self.eval_dataset = MolecularGraphDatasetFromSmiles(
-            smiles_list=smiles_df.iloc[:self.num_eval_samples].smiles.tolist(),
-        )
-        self.train_sampler = DistributedSampler(
-            dataset=self.train_dataset,
-            shuffle=True
-        )
-        self.eval_sampler = DistributedSampler(
-            dataset=self.eval_dataset,
-            shuffle=False
-        )
-        self.max_num_nodes += 1"""
 
     def train_dataloader(self):
         print(self.max_num_nodes)
