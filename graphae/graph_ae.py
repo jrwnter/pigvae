@@ -96,11 +96,11 @@ class GraphAE(torch.nn.Module):
     def postprocess_logits(node_logits, edge_logits, method=None, temp=1.0):
         element_type = node_logits[:, :11]
         charge_type = node_logits[:, 11:16]
-        hybridization_type = node_logits[:, 16:]
+        num_explicit_hydrogens = node_logits[:, 16:]
         element_type = postprocess(element_type, method=method, temperature=temp)
         charge_type = postprocess(charge_type, method=method, temperature=temp)
-        hybridization_type = postprocess(hybridization_type, method=method, temperature=temp)
-        nodes = torch.cat((element_type, charge_type, hybridization_type), dim=-1)
+        num_explicit_hydrogens = postprocess(num_explicit_hydrogens, method=method, temperature=temp)
+        nodes = torch.cat((element_type, charge_type, num_explicit_hydrogens), dim=-1)
         edges = postprocess(edge_logits, method=method)
         return nodes, edges
 
@@ -111,9 +111,9 @@ class GraphAE(torch.nn.Module):
         element_type = torch.zeros((batch_size, 11)).type_as(element_type).scatter_(1, element_type, 1)
         charge_type = torch.argmax(nodes[:, 11:16], axis=-1).unsqueeze(-1)
         charge_type = torch.zeros((batch_size, 5)).type_as(charge_type).scatter_(1, charge_type, 1)
-        hybridization_type = torch.argmax(nodes[:, 16:], axis=-1).unsqueeze(-1)
-        hybridization_type = torch.zeros((batch_size, 7)).type_as(hybridization_type).scatter_(1, hybridization_type, 1)
-        nodes = torch.cat((element_type, charge_type, hybridization_type), dim=-1)
+        num_explicit_hydrogens = torch.argmax(nodes[:, 16:], axis=-1).unsqueeze(-1)
+        num_explicit_hydrogens = torch.zeros((batch_size, 4)).type_as(num_explicit_hydrogens).scatter_(1, num_explicit_hydrogens, 1)
+        nodes = torch.cat((element_type, charge_type, num_explicit_hydrogens), dim=-1)
         edges_shape = edges.shape
         edges = torch.argmax(edges, axis=-1).unsqueeze(-1)
         edges = torch.zeros(edges_shape).type_as(edges).scatter_(1, edges, 1)
