@@ -50,12 +50,12 @@ class PLGraphAE(pl.LightningModule):
                 adj_logits=adj_logits,
                 method=postprocess_method,
             )
-        return node_logits, adj_logits, perm, props_pred, mu, logvar, graph_emb
+        return node_logits, adj_logits, perm, graph_emb, props_pred, mu, logvar
 
     def training_step(self, graph, batch_idx):
         nodes_true, edges_true, props_true = graph.x, graph.dense_edge_attr, graph.mol_properties
         tau = self.tau_scheduler.tau
-        nodes_pred, edges_pred, perm, props_pred, mu, logvar, graph_emb = self(
+        nodes_pred, edges_pred, perm, graph_emb, props_pred, mu, logvar = self(
             graph=graph,
             training=True,
             tau=tau
@@ -78,7 +78,7 @@ class PLGraphAE(pl.LightningModule):
     def validation_step(self, graph, batch_idx):
         nodes_true, edges_true, props_true = graph.x, graph.dense_edge_attr, graph.mol_properties
         tau = self.tau_scheduler.tau
-        nodes_pred, edges_pred, perm, props_pred, mu, logvar, graph_emb = self(
+        nodes_pred, edges_pred, perm, graph_emb, props_pred, mu, logvar = self(
             graph=graph,
             training=True,
             tau=tau
@@ -95,7 +95,7 @@ class PLGraphAE(pl.LightningModule):
             logvar=logvar,
             prefix="val",
         )
-        nodes_pred, edges_pred, perm, props_pred, mu, logvar, graph_emb = self(
+        nodes_pred, edges_pred, perm, graph_emb, props_pred, mu, logvar  = self(
             graph=graph,
             training=False,
             tau=tau
