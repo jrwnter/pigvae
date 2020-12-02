@@ -24,7 +24,7 @@ class PLGraphAE(pl.LightningModule):
         self.tau_scheduler = TauScheduler(
             start_value=hparams["tau"],
             factor=0.95,
-            step_size=1
+            step_size=2
         )
 
     def forward(self, graph, training, tau, postprocess_method=None):
@@ -95,7 +95,7 @@ class PLGraphAE(pl.LightningModule):
             logvar=logvar,
             prefix="val",
         )
-        nodes_pred, edges_pred, perm, graph_emb, props_pred, mu, logvar  = self(
+        nodes_pred, edges_pred, perm, graph_emb, props_pred, mu, logvar = self(
             graph=graph,
             training=False,
             tau=tau
@@ -124,7 +124,7 @@ class PLGraphAE(pl.LightningModule):
         lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
             factor=0.5,
-            patience=20,
+            patience=15,
             cooldown=50,
             min_lr=1e-6,
         )
