@@ -61,7 +61,7 @@ class Critic(torch.nn.Module):
             target=props_true
         )
         loss = {**recon_loss, "perm_loss": perm_loss, "property_loss": property_loss}
-        loss["loss"] = loss["loss"] + self.alpha * perm_loss + 0.1 * property_loss
+        loss["loss"] = loss["loss"] + 0.1 * property_loss
         return loss
 
     def node_metrics(self, nodes_pred, nodes_true):
