@@ -34,6 +34,7 @@ class Critic(torch.nn.Module):
         self.alpha = alpha
         self.reconstruction_loss = GraphReconstructionLoss()
         self.perm_loss = PermutaionMatrixPenalty()
+        self.property_loss = PropertyLoss()
         """self.element_type_recall = Recall(num_classes=11)
         self.element_type_precision = Precision(num_classes=11)
         self.element_type_accuracy = Accuracy()
@@ -47,7 +48,7 @@ class Critic(torch.nn.Module):
         self.edge_precision = Precision(num_classes=5)
         self.edge_accuracy = Accuracy()"""
 
-    def forward(self, nodes_true, edges_true, nodes_pred, edges_pred, perm):
+    def forward(self, nodes_true, edges_true, nodes_pred, edges_pred, perm, props_true, props_pred):
         recon_loss = self.reconstruction_loss(
             nodes_true=nodes_true,
             edges_true=edges_true,
@@ -55,9 +56,12 @@ class Critic(torch.nn.Module):
             edges_pred=edges_pred,
         )
         perm_loss = self.perm_loss(perm)
-        loss = {**recon_loss, "perm_loss": perm_loss}
-        loss["loss"] = loss["loss"] + self.alpha * perm_loss
-        #loss = recon_loss
+        property_loss = self.property_loss(
+            input=props_pred,
+            target=props_true
+        )
+        loss = {**recon_loss, "perm_loss": perm_loss, "property_loss": property_loss}
+        loss["loss"] = loss["loss"] + 0.1 * property_loss
         return loss
 
     def node_metrics(self, nodes_pred, nodes_true):
@@ -101,13 +105,15 @@ class Critic(torch.nn.Module):
         }
         return metrics
 
-    def evaluate(self, nodes_true, edges_true, nodes_pred, edges_pred, perm, prefix=None):
+    def evaluate(self, nodes_true, edges_true, nodes_pred, edges_pred, perm, props_true, props_pred, prefix=None):
         loss = self(
             nodes_true=nodes_true,
             edges_true=edges_true,
             nodes_pred=nodes_pred,
             edges_pred=edges_pred,
             perm=perm,
+            props_true=props_true,
+            props_pred=props_pred,
         )
         """node_metrics = self.node_metrics(
             nodes_pred=nodes_pred,
@@ -134,7 +140,6 @@ class GraphReconstructionLoss(torch.nn.Module):
         super().__init__()
         self.element_type_loss = CrossEntropyLoss(weight=ELEMENT_TYPE_WEIGHTS)
         self.charge_type_loss = CrossEntropyLoss(weight=CHARGE_TYPE_WEIGHTS)
-        #self.hybridization_type_loss = CrossEntropyLoss(weight=HYBRIDIZATION_TYPE_WEIGHT)
         self.explicit_hydrogen_loss = CrossEntropyLoss()
         self.edge_loss = CrossEntropyLoss(weight=EDGE_WEIGHTS)
 
@@ -151,12 +156,6 @@ class GraphReconstructionLoss(torch.nn.Module):
             input=charge_type_pred,
             target=charge_type_true
         )
-        """hybridization_type_pred = nodes_pred[:, 16:]
-        hybridization_type_true = torch.argmax(nodes_true[:, 16:], axis=-1).flatten()
-        hybridization_type_loss = self.hybridization_type_loss(
-            input=hybridization_type_pred,
-            target=hybridization_type_true
-        )"""
         explicit_hydrogen_pred = nodes_pred[:, 16:]
         explicit_hydrogen_true = torch.argmax(nodes_true[:, 16:], axis=-1).flatten()
         explicit_hydrogen_loss = self.explicit_hydrogen_loss(
@@ -169,13 +168,11 @@ class GraphReconstructionLoss(torch.nn.Module):
             input=edges_pred,
             target=edges_true
         )
-        #node_loss = (element_type_loss + charge_type_loss + hybridization_type_loss) / 3
         node_loss = (element_type_loss + charge_type_loss + explicit_hydrogen_loss) / 3
         total_loss = node_loss + edge_loss
         loss = {
             "element_type_loss": element_type_loss,
             "charge_type_loss": charge_type_loss,
-            #"hybridization_type_loss": hybridization_type_loss,
             "explicit_hydrogen_loss": explicit_hydrogen_loss,
             "edge_loss": edge_loss,
             "node_loss": node_loss,
@@ -184,7 +181,19 @@ class GraphReconstructionLoss(torch.nn.Module):
         return loss
 
 
-# TODO: do entropy over row and col cross for each entry?
+class PropertyLoss(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.mse_loss = MSELoss()
+
+    def forward(self, input, target):
+        loss = self.mse_loss(
+            input=input,
+            target=target
+        )
+        return loss
+
+
 class PermutaionMatrixPenalty(torch.nn.Module):
     def __init__(self):
         super().__init__()

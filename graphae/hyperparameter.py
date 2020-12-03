@@ -1,5 +1,5 @@
 import os
-DEFAULT_DATA_PATH = "/home/ggwaq/projects/graph_vae/smiles_atom_count2.csv"
+DEFAULT_DATA_PATH = "/home/ggwaq/projects/graph_vae/smiles_with_features.csv.gz"
 DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves12")
 
 
@@ -18,11 +18,11 @@ def add_arguments(parser):
     parser.add_argument('-g', '--gpus', default=1, type=int)
     parser.add_argument('-e', '--num_epochs', default=5000, type=int)
     parser.add_argument("--num_eval_samples", default=50000, type=int)
-    parser.add_argument("--num_samples_per_epoch", default=4000000, type=int)
-    parser.add_argument("--num_samples_per_epoch_inc", default=4000000, type=int)
+    parser.add_argument("--num_samples_per_epoch", default=800000000, type=int)
+    parser.add_argument("--num_samples_per_epoch_inc", default=2000000, type=int)
     parser.add_argument("--eval_freq", default=500, type=int)
     parser.add_argument("-s", "--save_dir", default=DEFAULT_SAVE_DIR, type=str)
-    parser.add_argument("--precision", default=16, type=int)
+    parser.add_argument("--precision", default=32, type=int)
     parser.add_argument('--progress_bar', dest='progress_bar', action='store_true')
     parser.set_defaults(test=False)
     parser.set_defaults(progress_bar=False)
@@ -56,12 +56,12 @@ def add_arguments(parser):
     # GRAPH ENCODER
     parser.add_argument("--node_dim", default=256, type=int)
     parser.add_argument("--graph_encoder_hidden_dim", default=1024, type=int)
-    parser.add_argument("--graph_encoder_num_layers", default=4, type=int)
+    parser.add_argument("--graph_encoder_num_layers", default=2, type=int)
 
     # GRAPH DECODER
 
     parser.add_argument("--node_emb_decoder_hidden_dim", default=1024, type=int)
-    parser.add_argument("--node_emb_decoder_num_layers", default=4, type=int)
+    parser.add_argument("--node_emb_decoder_num_layers", default=2, type=int)
 
     parser.add_argument("--edge_decoder_hidden_dim", default=1024, type=int)
     parser.add_argument("--edge_decoder_num_layers", default=3, type=int)
@@ -71,6 +71,11 @@ def add_arguments(parser):
 
     parser.add_argument("--postprocess_method", default=0, type=int)
     parser.add_argument("--postprocess_temp", default=1.0, type=float)
+
+    # PROPERTY PREDICTOR
+    parser.add_argument("--property_predictor_hidden_dim", default=128, type=int)
+    parser.add_argument("--property_predictor_num_layers", default=3, type=int)
+    parser.add_argument("--num_properties", default=8, type=int)
 
     # PI ENCODER
     parser.add_argument("--emb_dim", default=1024, type=int)
