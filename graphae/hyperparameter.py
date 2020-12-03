@@ -18,7 +18,7 @@ def add_arguments(parser):
     parser.add_argument('-g', '--gpus', default=1, type=int)
     parser.add_argument('-e', '--num_epochs', default=5000, type=int)
     parser.add_argument("--num_eval_samples", default=50000, type=int)
-    parser.add_argument("--num_samples_per_epoch", default=4000000, type=int)
+    parser.add_argument("--num_samples_per_epoch", default=800000000, type=int)
     parser.add_argument("--num_samples_per_epoch_inc", default=2000000, type=int)
     parser.add_argument("--eval_freq", default=500, type=int)
     parser.add_argument("-s", "--save_dir", default=DEFAULT_SAVE_DIR, type=str)
@@ -56,12 +56,12 @@ def add_arguments(parser):
     # GRAPH ENCODER
     parser.add_argument("--node_dim", default=256, type=int)
     parser.add_argument("--graph_encoder_hidden_dim", default=1024, type=int)
-    parser.add_argument("--graph_encoder_num_layers", default=4, type=int)
+    parser.add_argument("--graph_encoder_num_layers", default=2, type=int)
 
     # GRAPH DECODER
 
     parser.add_argument("--node_emb_decoder_hidden_dim", default=1024, type=int)
-    parser.add_argument("--node_emb_decoder_num_layers", default=4, type=int)
+    parser.add_argument("--node_emb_decoder_num_layers", default=2, type=int)
 
     parser.add_argument("--edge_decoder_hidden_dim", default=1024, type=int)
     parser.add_argument("--edge_decoder_num_layers", default=3, type=int)
