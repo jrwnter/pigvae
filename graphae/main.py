@@ -42,7 +42,7 @@ def main(hparams):
     my_ddp_plugin = MyDDP()
     trainer = pl.Trainer(
         gpus=hparams.gpus,
-        progress_bar_refresh_rate=10 if hparams.progress_bar else 0,
+        progress_bar_refresh_rate=5 if hparams.progress_bar else 0,
         logger=tb_logger,
         checkpoint_callback=checkpoint_callback,
         val_check_interval=hparams.eval_freq if not hparams.test else 1.0,
