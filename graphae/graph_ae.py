@@ -1,123 +1,144 @@
 import torch
-from graphae import encoder, decoder
+from torch.nn import Linear, LayerNorm, Dropout
+#from graphae import encoder, decoder
+from graphae.graph_transformer import GraphTransformer, PositionalEncoding
+from graphae import permuter
+from graphae.data import DenseGraphBatch
 
 
 class GraphEncoder(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
-        self.num_nodes = hparams["max_num_nodes"]
-        self.encoder = encoder.GraphEncoder(
-            input_dim=hparams["num_node_features"],
-            hidden_dim=hparams["graph_encoder_hidden_dim"],
-            num_layers=hparams["graph_encoder_num_layers"],
-            output_dim=hparams["node_dim"],
-            edge_dim=hparams["num_edge_features"] + 1,
-            num_heads=4,
-            batch_norm=hparams["batch_norm"],
-            non_lin=hparams["nonlin"]
+        self.graph_transformer = GraphTransformer(
+            node_hidden_dim=512,
+            edge_hidden_dim=512,
+            nk_dim=64,
+            ek_dim=64,
+            v_dim=64,
+            num_heads=8,
+            ppf_hidden_dim=1024,
+            num_layers=4,
         )
+        self.node_fc_in = Linear(hparams["num_node_features"] + 1, 512)
+        self.edge_fc_in = Linear(hparams["num_edge_features"] + 1, 512)
+        self.dropout = Dropout(0.1)
 
-    def forward(self, graph):
-        node_embs = self.encoder(
-            x=graph.x,
-            edge_index=graph.dense_edge_index,
-            edge_attr=graph.dense_edge_attr,
-        )
-        return node_embs
+    #  TODO: only apply fc on masked features. check speed up
+    def forward(self, node_features, edge_features, mask):
+
+        node_features = self.dropout(self.node_fc_in(node_features))
+        edge_features = self.dropout(self.edge_fc_in(edge_features))
+        node_features, edge_features = self.graph_transformer(node_features, edge_features, mask)
+        return node_features, edge_features
 
 
 class GraphDecoder(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
+        self.posiotional_embedding = PositionalEncoding(512)
+        self.graph_transformer = self.encoder = GraphTransformer(
+            node_hidden_dim=512,
+            edge_hidden_dim=512,
+            nk_dim=64,
+            ek_dim=64,
+            v_dim=64,
+            num_heads=8,
+            ppf_hidden_dim=1024,
+            num_layers=4
+        )
+        self.node_fc_in = Linear(512, 512)
+        self.edge_fc_in = Linear(2 * 512, 512)
+        self.node_fc_out = Linear(512, hparams["num_node_features"])
+        self.edge_fc_out = Linear(512, hparams["num_edge_features"] + 1)
+        self.dropout = Dropout(0.1)
 
-        self.node_emb_decoder = decoder.NodeEmbDecoder(
-            input_dim=hparams["node_dim"],
-            hidden_dim=hparams["node_emb_decoder_hidden_dim"],
-            num_layers=hparams["node_emb_decoder_num_layers"],
-            output_dim=hparams["node_emb_decoder_hidden_dim"],
-            num_heads=4,
-            non_lin=hparams["nonlin"],
-            batch_norm=hparams["batch_norm"],
+    def forward(self, graph_emb, perm, mask):
+        batch_size, num_nodes = mask.size(0), mask.size(1)
+        node_features = graph_emb.unsqueeze(1).expand(-1, num_nodes, -1)
+        node_features = node_features + self.posiotional_embedding(batch_size, num_nodes)
+        node_features = torch.matmul(perm, node_features)
+        node_features_combined = torch.cat(
+            (node_features.unsqueeze(1).repeat(1, num_nodes, 1, 1),
+             node_features.unsqueeze(2).repeat_interleave(num_nodes, dim=2)),
+            dim=-1)  # b x nn x nn x 2*512
+
+        node_features = self.dropout(self.node_fc_in(node_features))
+        edge_features = self.dropout(self.edge_fc_in(node_features_combined))
+        node_features, edge_features = self.graph_transformer(node_features, edge_features, mask)
+        node_features = self.node_fc_out(node_features)
+        edge_features = self.edge_fc_out(edge_features)
+
+        return node_features, edge_features
+
+
+class Permuter(torch.nn.Module):
+    def __init__(self, hparams):
+        super().__init__()
+        self.permuter = permuter.Permuter(
+            input_dim=512,
         )
 
-        self.edge_predictor = decoder.EdgeTypePredictor(
-            input_dim=hparams["node_emb_decoder_hidden_dim"],
-            hidden_dim=hparams["edge_decoder_hidden_dim"],
-            output_dim=hparams["num_edge_features"] + 1,
-            num_layers=hparams["edge_decoder_num_layers"],
-            non_lin=hparams["nonlin"],
-            batch_norm=hparams["batch_norm"],
-        )
-        self.node_predictor = decoder.NodeTypePredictor(
-            input_dim=hparams["node_emb_decoder_hidden_dim"],
-            hidden_dim=hparams["node_decoder_hidden_dim"],
-            output_dim=hparams["num_node_features"],
-            num_layers=hparams["node_decoder_num_layers"],
-            non_lin=hparams["nonlin"],
-            batch_norm=hparams["batch_norm"],
-        )
-
-    def forward(self, x, edge_index, batch):
-        x = self.node_emb_decoder(x, edge_index)
-        node_logits = self.node_predictor(x)
-        edge_logits = self.edge_predictor(x, edge_index)
-
-        return node_logits, edge_logits
+    def forward(self, node_features, mask, hard=False, tau=1.0):
+        batch_size, num_nodes = mask.size(0), mask.size(1)
+        perm = self.permuter(node_features, mask, hard=hard, tau=tau)
+        eye = torch.eye(num_nodes, num_nodes).unsqueeze(0).expand(batch_size, -1, -1).type_as(perm)
+        mask = mask.unsqueeze(-1).expand(-1, -1, num_nodes)
+        perm = torch.where(mask, perm, eye)
+        return perm
 
 
 class GraphAE(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
         self.encoder = GraphEncoder(hparams)
+        self.permuter = Permuter(hparams)
         self.decoder = GraphDecoder(hparams)
         self.node_dim = hparams["node_dim"]
         self.num_nodes = hparams["max_num_nodes"]
 
     def encode(self, graph):
-        node_embs = self.encoder(graph=graph)
+        node_embs, _ = self.encoder(
+            node_features=graph.node_features,
+            edge_features=graph.edge_features,
+            mask=graph.mask
+        )
         return node_embs
 
-    def forward(self, graph, postprocess_method=None):
+    def forward(self, graph, training, tau):
         node_embs = self.encode(graph=graph)
+        graph_emb, node_embs = node_embs[:, 0], node_embs[:, 1:]
+        perm = self.permuter(node_embs, mask=graph.mask[:, 1:], hard=not training, tau=tau)
         node_logits, edge_logits = self.decoder(
-            x=node_embs,
-            edge_index=graph.dense_edge_index,
-            batch=graph.batch
+            graph_emb=graph_emb,
+            perm=perm,
+            mask=graph.mask[:, 1:]
         )
-        if postprocess_method is not None:
-            node_logits, edge_logits = self.postprocess_logits(
-                node_logits=node_logits,
-                edge_logits=edge_logits,
-                method=postprocess_method,
-            )
-        return node_logits, edge_logits
+        graph_pred = DenseGraphBatch(
+            node_features=node_logits,
+            edge_features=edge_logits,
+            mask=graph.mask[:, 1:],
+            molecular_properties=None
+        )
+        return graph_pred, graph_emb, perm
 
     @staticmethod
-    def postprocess_logits(node_logits, edge_logits, method=None, temp=1.0):
-        element_type = node_logits[:, :11]
-        charge_type = node_logits[:, 11:16]
-        num_explicit_hydrogens = node_logits[:, 16:]
-        element_type = postprocess(element_type, method=method, temperature=temp)
-        charge_type = postprocess(charge_type, method=method, temperature=temp)
-        num_explicit_hydrogens = postprocess(num_explicit_hydrogens, method=method, temperature=temp)
-        nodes = torch.cat((element_type, charge_type, num_explicit_hydrogens), dim=-1)
-        edges = postprocess(edge_logits, method=method)
-        return nodes, edges
-
-    @staticmethod
-    def logits_to_one_hot(nodes, edges):
-        batch_size = nodes.size(0)
-        element_type = torch.argmax(nodes[:, :11], axis=-1).unsqueeze(-1)
-        element_type = torch.zeros((batch_size, 11)).type_as(element_type).scatter_(1, element_type, 1)
-        charge_type = torch.argmax(nodes[:, 11:16], axis=-1).unsqueeze(-1)
-        charge_type = torch.zeros((batch_size, 5)).type_as(charge_type).scatter_(1, charge_type, 1)
-        num_explicit_hydrogens = torch.argmax(nodes[:, 16:], axis=-1).unsqueeze(-1)
-        num_explicit_hydrogens = torch.zeros((batch_size, 4)).type_as(num_explicit_hydrogens).scatter_(1, num_explicit_hydrogens, 1)
+    def logits_to_one_hot(graph):
+        nodes = graph.node_features[:, :, :-1]
+        edges = graph.edge_features[:, :, :]
+        batch_size, num_nodes = nodes.size(0), nodes.size(1)
+        element_type = torch.argmax(nodes[:, :, :11], axis=-1).unsqueeze(-1)
+        element_type = torch.zeros((batch_size, num_nodes, 11)).type_as(element_type).scatter_(2, element_type, 1)
+        charge_type = torch.argmax(nodes[:, :, 11:16], axis=-1).unsqueeze(-1)
+        charge_type = torch.zeros((batch_size, num_nodes, 5)).type_as(charge_type).scatter_(2, charge_type, 1)
+        num_explicit_hydrogens = torch.argmax(nodes[:, :, 16:], axis=-1).unsqueeze(-1)
+        num_explicit_hydrogens = torch.zeros((batch_size, num_nodes, 4)).type_as(num_explicit_hydrogens).scatter_(2, num_explicit_hydrogens, 1)
         nodes = torch.cat((element_type, charge_type, num_explicit_hydrogens), dim=-1)
         edges_shape = edges.shape
         edges = torch.argmax(edges, axis=-1).unsqueeze(-1)
-        edges = torch.zeros(edges_shape).type_as(edges).scatter_(1, edges, 1)
-        return nodes, edges
+        edges = torch.zeros(edges_shape).type_as(edges).scatter_(3, edges, 1)
+        graph.node_features = nodes
+        graph.edge_features = edges
+        return graph
 
 
 def postprocess(logits, method, temperature=1.):

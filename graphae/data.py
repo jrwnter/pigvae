@@ -1,12 +1,13 @@
 import numpy as np
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
 import pandas as pd
 import pytorch_lightning as pl
 from rdkit import Chem
-from torch_geometric.data import Data, Batch, DataLoader
+from torch_geometric.data import Data
 from torch_geometric.transforms import ToDense
+from torch_geometric.utils import to_dense_batch, to_dense_adj
 
 ELEM_LIST = ['C', 'N', 'O', 'S', 'F', 'Si', 'P', 'Cl', 'Br', 'I', 'H']
 CHARGE_LIST = [-1, -2, 1, 2, 0]
@@ -20,6 +21,53 @@ HS_LIST = [0, 1, 2, 3]
 NUM_ELEMENTS = len(ELEM_LIST)
 NUM_ATOMS_MEAN = 23.101
 NUM_ATOMS_STD = 6.652
+
+
+
+class DenseGraphBatch(Data):
+    def __init__(self, node_features, edge_features, mask, **kwargs):
+        self.node_features = node_features
+        self.edge_features = edge_features
+        self.mask = mask
+        for key, item in kwargs.items():
+            setattr(self, key, item)
+
+    @classmethod
+    def from_sparse_graph_list(cls, graph_list):
+        max_num_nodes = max([len(graph.x) for graph in graph_list])
+        x = []
+        mask = []
+        adj = []
+        other_attr = {key: [] for key in graph_list[0].keys if key not in ['x', 'edge_index', 'edge_attr']}
+        for graph in graph_list:
+            x_, mask_ = to_dense_batch(graph.x, max_num_nodes=max_num_nodes)
+            adj_ = to_dense_adj(graph.edge_index, edge_attr=graph.edge_attr, max_num_nodes=max_num_nodes)
+            adj_ = add_empty_edge_type(adj_)
+            x.append(x_)
+            mask.append(mask_)
+            adj.append(adj_)
+            for key in other_attr.keys():
+                attr = graph[key]
+                # add batch dim
+                if attr.size(0) != 0:
+                    attr.unsqueeze(0)
+                other_attr[key].append(attr)
+        x = torch.cat(x, dim=0)
+        mask = torch.cat(mask, dim=0)
+        adj = torch.cat(adj, dim=0)
+        for key in other_attr.keys():
+            other_attr[key] = torch.cat(other_attr[key])
+        return cls(node_features=x, edge_features=adj, mask=mask, **other_attr)
+
+    def __repr__(self):
+        repr_list = ["{}={}".format(key, list(value.shape)) for key, value in self.__dict__.items()]
+        return "DenseGraphBatch({})".format(", ".join(repr_list))
+
+
+class DenseGraphDataLoader(torch.utils.data.DataLoader):
+    def __init__(self, dataset, batch_size=1, shuffle=False, **kwargs):
+        super().__init__(dataset, batch_size, shuffle,
+                         collate_fn=lambda data_list: DenseGraphBatch.from_sparse_graph_list(data_list), **kwargs)
 
 
 class MolecularGraphDataModule(pl.LightningDataModule):
@@ -40,7 +88,7 @@ class MolecularGraphDataModule(pl.LightningDataModule):
         self.eval_sampler = None
 
     def setup(self, stage):
-        num_smiles = 100000 if self.debug else None
+        num_smiles = 1000000 if self.debug else None
         smiles_df = pd.read_csv(self.data_path, nrows=num_smiles, compression="gzip")
         self.train_smiles_df = smiles_df.iloc[self.num_eval_samples:]
         self.eval_smiles_df = smiles_df.iloc[:self.num_eval_samples]
@@ -57,7 +105,7 @@ class MolecularGraphDataModule(pl.LightningDataModule):
         )
         self.max_num_nodes += 2
         self.num_samples_per_epoch += self.num_samples_per_epoch_inc
-        return DataLoader(
+        return DenseGraphDataLoader(
             dataset=train_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
@@ -71,7 +119,7 @@ class MolecularGraphDataModule(pl.LightningDataModule):
             dataset=eval_dataset,
             shuffle=False
         )
-        return DataLoader(
+        return DenseGraphDataLoader(
             dataset=eval_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
@@ -86,21 +134,6 @@ class MolecularGraphDatasetFromSmiles(Dataset):
         self.smiles = smiles_list
         self.randomize_smiles = randomize_smiles
 
-    def dense_edge_index(self, graph):
-        num_elements = graph.x.size(0)
-        edge_index = torch.combinations(torch.arange(num_elements), 2).transpose(1, 0)
-        edge_index = torch.cat((edge_index, edge_index[[1, 0]]), dim=0).transpose(1, 0).reshape(-1, 2).transpose(1, 0)
-        return edge_index
-
-    def dense_edge_attr(self, graph):
-        idx1, idx2 = torch.where(
-            (graph.dense_edge_index.unsqueeze(2) == graph.edge_index.unsqueeze(1)).all(dim=0))
-        dense_edge_attr = torch.cat((
-            torch.zeros(graph.dense_edge_index.size(1), graph.edge_attr.size(1)),
-            torch.ones(graph.dense_edge_index.size(1), 1)), dim=-1)
-        dense_edge_attr[idx1] = torch.cat((graph.edge_attr, torch.zeros(graph.edge_attr.size(0), 1)), dim=-1)[idx2]
-        return dense_edge_attr
-
     def __len__(self):
         return len(self.smiles)
 
@@ -109,9 +142,6 @@ class MolecularGraphDatasetFromSmiles(Dataset):
         if self.randomize_smiles:
             smiles = Chem.MolToSmiles(Chem.MolFromSmiles(smiles), doRandom=True)
         graph = MolecularGraph.from_smiles(smiles)
-        graph.dense_edge_index = self.dense_edge_index(graph)
-        graph.dense_edge_attr = self.dense_edge_attr(graph)
-
         return graph
 
 
@@ -132,10 +162,7 @@ class MolecularGraphDatasetFromSmilesDataFrame(MolecularGraphDatasetFromSmiles):
         if self.randomize_smiles:
             smiles = Chem.MolToSmiles(Chem.MolFromSmiles(smiles), doRandom=True)
         graph = MolecularGraph.from_smiles(smiles)
-        graph.dense_edge_index = self.dense_edge_index(graph)
-        graph.dense_edge_attr = self.dense_edge_attr(graph)
         graph.mol_properties = props
-
         return graph
 
 
@@ -144,6 +171,7 @@ class MolecularGraph(Data):
     def from_smiles(cls, smiles):
         mol = Chem.MolFromSmiles(smiles)
         graph = cls.from_mol(mol=mol)
+        graph.x = add_embedding_node(graph.x)
         return graph
 
     @classmethod
@@ -289,6 +317,12 @@ def add_empty_node_type(nodes):
     return nodes
 
 
+def add_embedding_node(x):
+    shape = x.shape
+    x = torch.cat((x, torch.zeros(shape[0], 1)), dim=1)
+    x = torch.cat((torch.Tensor(shape[1] * [0] + [1]).unsqueeze(0), x), dim=0)
+    return x
+
 def add_empty_edge_type(adj):
     shape = adj.shape
     if adj.dim() == 3:
@@ -311,17 +345,4 @@ def batch_to_dense(batch, num_nodes):
     x = torch.stack(x, dim=0)
     adj = torch.stack(adj, dim=0)
     return x, adj
-
-
-def get_mask_for_batch(batch, device):
-    num_elements = torch.bincount(batch)
-    max_len = num_elements.max()
-    batch_size = len(num_elements)
-    mask = torch.where(
-        torch.arange(max_len, device=device).unsqueeze(0) < num_elements.unsqueeze(1),
-        torch.ones((batch_size, max_len), device=device),
-        torch.zeros((batch_size, max_len), device=device)
-    )
-    mask = mask.bool()
-    return mask
 

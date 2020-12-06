@@ -11,9 +11,8 @@ ELEMENT_TYPE_WEIGHTS = torch.Tensor([
 CHARGE_TYPE_WEIGHTS = torch.Tensor([0.2596, 0.2596, 0.2205, 0.2596, 0.0006])
 HYBRIDIZATION_TYPE_WEIGHT = torch.Tensor(
     [2.4989e-01, 4.4300e-04, 4.6720e-06, 7.8765e-06, 2.4989e-01, 2.4989e-01, 2.4989e-01])
-#EDGE_WEIGHTS = torch.Tensor([5.4339e-03, 4.5212e-02, 9.4218e-01, 6.8846e-03, 2.8955e-04])
-EDGE_WEIGHTS = torch.Tensor([1, 10, 100, 1, 1])
-MASK_POS_WEIGHT = torch.Tensor([0.3221])
+EDGE_WEIGHTS = torch.Tensor([5.4339e-03, 4.5212e-02, 9.4218e-01, 6.8846e-03, 2.8955e-04])
+#EDGE_WEIGHTS = torch.Tensor([1, 10, 100, 1, 1])
 
 # 16
 
@@ -48,20 +47,21 @@ class Critic(torch.nn.Module):
         self.edge_precision = Precision(num_classes=5)
         self.edge_accuracy = Accuracy()"""
 
-    def forward(self, nodes_true, edges_true, nodes_pred, edges_pred, perm, props_true, props_pred):
+    def forward(self, graph_true, graph_pred, perm):
         recon_loss = self.reconstruction_loss(
-            nodes_true=nodes_true,
-            edges_true=edges_true,
-            nodes_pred=nodes_pred,
-            edges_pred=edges_pred,
+            graph_true=graph_true,
+            graph_pred=graph_pred
         )
+        """
         perm_loss = self.perm_loss(perm)
         property_loss = self.property_loss(
-            input=props_pred,
-            target=props_true
+            input=graph_true.molecular_properties,
+            target=graph_pred.molecular_properties,
         )
         loss = {**recon_loss, "perm_loss": perm_loss, "property_loss": property_loss}
         loss["loss"] = loss["loss"] + 0.1 * property_loss
+        """
+        loss = recon_loss
         return loss
 
     def node_metrics(self, nodes_pred, nodes_true):
@@ -105,15 +105,11 @@ class Critic(torch.nn.Module):
         }
         return metrics
 
-    def evaluate(self, nodes_true, edges_true, nodes_pred, edges_pred, perm, props_true, props_pred, prefix=None):
+    def evaluate(self, graph_true, graph_pred, perm, prefix=None):
         loss = self(
-            nodes_true=nodes_true,
-            edges_true=edges_true,
-            nodes_pred=nodes_pred,
-            edges_pred=edges_pred,
+            graph_true=graph_true,
+            graph_pred=graph_pred,
             perm=perm,
-            props_true=props_true,
-            props_pred=props_pred,
         )
         """node_metrics = self.node_metrics(
             nodes_pred=nodes_pred,
@@ -143,7 +139,18 @@ class GraphReconstructionLoss(torch.nn.Module):
         self.explicit_hydrogen_loss = CrossEntropyLoss()
         self.edge_loss = CrossEntropyLoss(weight=EDGE_WEIGHTS)
 
-    def forward(self, nodes_true, edges_true, nodes_pred, edges_pred):
+    def forward(self, graph_true, graph_pred):
+        #print(graph_true.node_features.shape, graph_pred.node_features.shape, graph_true.mask.shape)
+        true_mask = graph_true.mask
+        true_mask = torch.cat((torch.zeros(true_mask.size(0), 1).type_as(true_mask), true_mask[:, 1:]), dim=1)
+        true_adj_mask = true_mask.unsqueeze(1) * true_mask.unsqueeze(2)
+        pred_mask = graph_pred.mask
+        pred_adj_mask = pred_mask.unsqueeze(1) * pred_mask.unsqueeze(2)
+        nodes_true = graph_true.node_features[true_mask]
+        nodes_pred = graph_pred.node_features[pred_mask]
+        edges_true = graph_true.edge_features[true_adj_mask]
+        edges_pred = graph_pred.edge_features[pred_adj_mask]
+
         element_type_pred = nodes_pred[:, :11]
         element_type_true = torch.argmax(nodes_true[:, :11], axis=-1).flatten()
         element_type_loss = self.element_type_loss(
@@ -157,7 +164,7 @@ class GraphReconstructionLoss(torch.nn.Module):
             target=charge_type_true
         )
         explicit_hydrogen_pred = nodes_pred[:, 16:]
-        explicit_hydrogen_true = torch.argmax(nodes_true[:, 16:], axis=-1).flatten()
+        explicit_hydrogen_true = torch.argmax(nodes_true[:, 16:-1], axis=-1).flatten()
         explicit_hydrogen_loss = self.explicit_hydrogen_loss(
             input=explicit_hydrogen_pred,
             target=explicit_hydrogen_true
