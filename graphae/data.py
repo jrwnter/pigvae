@@ -88,7 +88,7 @@ class MolecularGraphDataModule(pl.LightningDataModule):
         self.eval_sampler = None
 
     def setup(self, stage):
-        num_smiles = 1000000 if self.debug else None
+        num_smiles = 10000000 if self.debug else None
         smiles_df = pd.read_csv(self.data_path, nrows=num_smiles, compression="gzip")
         self.train_smiles_df = smiles_df.iloc[self.num_eval_samples:]
         self.eval_smiles_df = smiles_df.iloc[:self.num_eval_samples]

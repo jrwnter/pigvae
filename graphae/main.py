@@ -45,7 +45,7 @@ def main(hparams):
         progress_bar_refresh_rate=5 if hparams.progress_bar else 0,
         logger=tb_logger,
         checkpoint_callback=checkpoint_callback,
-        val_check_interval=hparams.eval_freq if not hparams.test else 100,
+        val_check_interval=hparams.eval_freq if not hparams.test else 500,
         accelerator="ddp",
         plugins=[my_ddp_plugin],
         gradient_clip_val=0.1,
