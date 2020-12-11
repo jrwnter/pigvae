@@ -103,7 +103,7 @@ class MolecularGraphDataModule(pl.LightningDataModule):
             dataset=train_dataset,
             shuffle=True
         )
-        self.max_num_nodes += 2
+        #self.max_num_nodes += 2
         self.num_samples_per_epoch += self.num_samples_per_epoch_inc
         return DenseGraphDataLoader(
             dataset=train_dataset,
@@ -114,7 +114,8 @@ class MolecularGraphDataModule(pl.LightningDataModule):
         )
 
     def val_dataloader(self):
-        eval_dataset = MolecularGraphDatasetFromSmilesDataFrame(df=self.eval_smiles_df)
+        smiles_df = self.eval_smiles_df[self.eval_smiles_df.num_atoms <= self.max_num_nodes].reset_index(drop=True)
+        eval_dataset = MolecularGraphDatasetFromSmilesDataFrame(df=smiles_df)
         eval_sampler = DistributedSampler(
             dataset=eval_dataset,
             shuffle=False
@@ -171,7 +172,7 @@ class MolecularGraph(Data):
     def from_smiles(cls, smiles):
         mol = Chem.MolFromSmiles(smiles)
         graph = cls.from_mol(mol=mol)
-        graph.x = add_embedding_node(graph.x)
+        #graph.x = add_embedding_node(graph.x)
         return graph
 
     @classmethod

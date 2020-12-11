@@ -21,7 +21,10 @@ class Permuter(torch.nn.Module):
 
     def forward(self, x, mask, hard=False, tau=1.0):
         # x [batch_size, element_dim]
+        #print(torch.where(torch.isnan(x)))
         scores = self.scoring_fc(x)
+        #print(torch.where(torch.isnan(scores)))
+
         fill_value = scores.min().item() - 1
         scores = scores.masked_fill(mask.unsqueeze(-1) == 0, fill_value)
         perm = self.soft_sort(scores.squeeze(), hard=hard, tau=tau)  # [batch_size, max_len, max_len]

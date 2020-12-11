@@ -11,8 +11,8 @@ ELEMENT_TYPE_WEIGHTS = torch.Tensor([
 CHARGE_TYPE_WEIGHTS = torch.Tensor([0.2596, 0.2596, 0.2205, 0.2596, 0.0006])
 HYBRIDIZATION_TYPE_WEIGHT = torch.Tensor(
     [2.4989e-01, 4.4300e-04, 4.6720e-06, 7.8765e-06, 2.4989e-01, 2.4989e-01, 2.4989e-01])
-EDGE_WEIGHTS = torch.Tensor([5.4339e-03, 4.5212e-02, 9.4218e-01, 6.8846e-03, 2.8955e-04])
-#EDGE_WEIGHTS = torch.Tensor([1, 10, 100, 1, 1])
+#EDGE_WEIGHTS = torch.Tensor([5.4339e-03, 4.5212e-02, 9.4218e-01, 6.8846e-03, 2.8955e-04])
+EDGE_WEIGHTS = torch.Tensor([1, 10, 100, 1, 1])
 
 # 16
 
@@ -140,16 +140,12 @@ class GraphReconstructionLoss(torch.nn.Module):
         self.edge_loss = CrossEntropyLoss(weight=EDGE_WEIGHTS)
 
     def forward(self, graph_true, graph_pred):
-        #print(graph_true.node_features.shape, graph_pred.node_features.shape, graph_true.mask.shape)
-        true_mask = graph_true.mask
-        true_mask = torch.cat((torch.zeros(true_mask.size(0), 1).type_as(true_mask), true_mask[:, 1:]), dim=1)
-        true_adj_mask = true_mask.unsqueeze(1) * true_mask.unsqueeze(2)
-        pred_mask = graph_pred.mask
-        pred_adj_mask = pred_mask.unsqueeze(1) * pred_mask.unsqueeze(2)
-        nodes_true = graph_true.node_features[true_mask]
-        nodes_pred = graph_pred.node_features[pred_mask]
-        edges_true = graph_true.edge_features[true_adj_mask]
-        edges_pred = graph_pred.edge_features[pred_adj_mask]
+        mask = graph_true.mask
+        adj_mask = mask.unsqueeze(1) * mask.unsqueeze(2)
+        nodes_true = graph_true.node_features[mask]
+        nodes_pred = graph_pred.node_features[mask]
+        edges_true = graph_true.edge_features[adj_mask]
+        edges_pred = graph_pred.edge_features[adj_mask]
 
         element_type_pred = nodes_pred[:, :11]
         element_type_true = torch.argmax(nodes_true[:, :11], axis=-1).flatten()
@@ -164,7 +160,7 @@ class GraphReconstructionLoss(torch.nn.Module):
             target=charge_type_true
         )
         explicit_hydrogen_pred = nodes_pred[:, 16:]
-        explicit_hydrogen_true = torch.argmax(nodes_true[:, 16:-1], axis=-1).flatten()
+        explicit_hydrogen_true = torch.argmax(nodes_true[:, 16:], axis=-1).flatten()
         explicit_hydrogen_loss = self.explicit_hydrogen_loss(
             input=explicit_hydrogen_pred,
             target=explicit_hydrogen_true

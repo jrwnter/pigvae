@@ -58,7 +58,7 @@ class PLGraphAE(pl.LightningModule):
             perm=perm,
             prefix="val",
         )
-        """graph_pred, perm, graph_emb = self(
+        graph_pred, perm, graph_emb = self(
             graph=graph,
             training=False,
             tau=tau
@@ -70,7 +70,7 @@ class PLGraphAE(pl.LightningModule):
             prefix="val_hard",
         )
         metrics = {**metrics_soft, **metrics_hard}
-        self.log_dict(metrics)"""
+        self.log_dict(metrics)
         self.log_dict(metrics_soft)
 
     def on_validation_epoch_end(self):
@@ -93,6 +93,17 @@ class PLGraphAE(pl.LightningModule):
         }
         return [optimizer], [scheduler]
 
+    def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_idx, optimizer_closure=None, second_order_closure=None, on_tpu=False,
+                       using_native_amp=False, using_lbfgs=False):
+        # warm up lr
+        if self.trainer.global_step < 2000:
+            lr_scale = min(1., float(self.trainer.global_step + 1) / 2000.)
+            for pg in optimizer.param_groups:
+                pg['lr'] = lr_scale * self.hparams.lr
+
+        # update params
+        optimizer.step(closure=optimizer_closure)
+        optimizer.zero_grad()
 
 class TauScheduler(object):
     def __init__(self, start_value, factor, step_size):

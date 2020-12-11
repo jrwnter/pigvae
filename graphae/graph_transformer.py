@@ -33,7 +33,7 @@ class PositionwiseFeedForward(torch.nn.Module):
         super().__init__()
         self.w_1 = Linear(d_in, d_hid)  # position-wise
         self.w_2 = Linear(d_hid, d_in)  # position-wise
-        self.layer_norm = LayerNorm(d_in, eps=1e-6)
+        self.layer_norm = LayerNorm(d_in)
         self.dropout = Dropout(dropout)
 
     def forward(self, x):
@@ -98,7 +98,7 @@ class SelfAttention(torch.nn.Module):
             temperature=k_dim ** 0.5
         )
         self.dropout = Dropout(dropout)
-        self.layer_norm = LayerNorm(hidden_dim, eps=1e-6)
+        self.layer_norm = LayerNorm(hidden_dim)
 
     def forward(self, x, mask):
         batch_size, len_x = x.size(0), x.size(1)

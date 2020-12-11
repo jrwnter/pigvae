@@ -15,6 +15,7 @@ logging.getLogger("lightning").setLevel(logging.WARNING)
 
 
 def main(hparams):
+    print(pl.__version__)
     #torch.set_num_threads(8)
     if not os.path.isdir(hparams.save_dir + "/run{}/".format(hparams.id)):
         print("Creating directory")
@@ -33,7 +34,7 @@ def main(hparams):
         data_path=hparams.data_path,
         batch_size=hparams.batch_size,
         max_num_nodes=hparams.max_num_nodes,
-        num_eval_samples=hparams.num_eval_samples if not hparams.test else 1024,
+        num_eval_samples=hparams.num_eval_samples if not hparams.test else 8 * 512,
         num_samples_per_epoch=hparams.num_samples_per_epoch,
         num_samples_per_epoch_inc=hparams.num_samples_per_epoch_inc,
         num_workers=hparams.num_workers,
@@ -45,7 +46,7 @@ def main(hparams):
         progress_bar_refresh_rate=5 if hparams.progress_bar else 0,
         logger=tb_logger,
         checkpoint_callback=checkpoint_callback,
-        val_check_interval=hparams.eval_freq if not hparams.test else 500,
+        val_check_interval=hparams.eval_freq if not hparams.test else 100,
         accelerator="ddp",
         plugins=[my_ddp_plugin],
         gradient_clip_val=0.1,
