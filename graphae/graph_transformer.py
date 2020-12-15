@@ -20,9 +20,9 @@ class Transformer(torch.nn.Module):
             PositionwiseFeedForward(hidden_dim, ppf_hidden_dim)
             for _ in range(num_layers)])
 
-    def forward(self, x, mask):
+    def forward(self, x, mask, attn_mask):
         for i in range(self.num_layers):
-            x, _ = self.self_attn_layers[i](x, mask)
+            x, _ = self.self_attn_layers[i](x, mask, attn_mask)
             x = self.pff_layers[i](x)
         return x
 
@@ -67,7 +67,6 @@ class ScaledDotProductWithEdgeAttention(torch.nn.Module):
         attn = torch.matmul(q, k.transpose(2, 3))
         attn = attn / self.temperature
 
-
         # attn: b x nh x nn x nn
         if mask is not None:
             attn = attn.masked_fill(mask == 0, -1e9)
@@ -100,17 +99,15 @@ class SelfAttention(torch.nn.Module):
         self.dropout = Dropout(dropout)
         self.layer_norm = LayerNorm(hidden_dim)
 
-    def forward(self, x, mask):
+    def forward(self, x, mask, attn_mask):
         batch_size, len_x = x.size(0), x.size(1)
         device = x.device
-        interact_mask = mask.unsqueeze(1) * mask.unsqueeze(2)
 
         residual = x
 
         # Pass through the pre-attention projection: b x lx x (n*dv)
         # Separate different heads: b x lx x nh x dv
         x = x[mask]
-        x = self.layer_norm(x)
         q = torch.empty((batch_size, len_x, self.n_head, self.q_dim), device=device)
         k = torch.empty((batch_size, len_x, self.n_head, self.k_dim), device=device)
         v = torch.empty((batch_size, len_x, self.n_head, self.v_dim), device=device)
@@ -121,7 +118,7 @@ class SelfAttention(torch.nn.Module):
         # Transpose for attention dot product: b x nh x lx x dv
         q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
 
-        x, attn = self.attention(q, k, v, mask=interact_mask.unsqueeze(1))  # unsqueeze For head axs broadcasting
+        x, attn = self.attention(q, k, v, mask=attn_mask.unsqueeze(1))  # unsqueeze For head axs broadcasting
 
         # Transpose to move the head dimension back: b x lx x n x dv
         # Combine the last two dimensions to concatenate all the heads together: b x lx x (nh*dv)
@@ -129,6 +126,7 @@ class SelfAttention(torch.nn.Module):
         x_out = torch.empty((batch_size, len_x, self.hidden_dim), device=device)
         x_out.masked_scatter_(mask[:, :, None], self.dropout(self.fc(x[mask])))
         x_out += residual
+        x_out = self.layer_norm(x_out)
 
         return x_out, attn
 

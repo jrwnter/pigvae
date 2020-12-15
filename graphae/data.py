@@ -54,7 +54,10 @@ class DenseGraphBatch(Data):
                 other_attr[key].append(attr)
         x = torch.cat(x, dim=0)
         mask = torch.cat(mask, dim=0)
+        # set self edges to 0
         adj = torch.cat(adj, dim=0)
+        self_edge_mask = torch.eye(max_num_nodes, max_num_nodes).bool().unsqueeze(-1)
+        adj.masked_fill_(self_edge_mask, 0)
         for key in other_attr.keys():
             other_attr[key] = torch.cat(other_attr[key])
         return cls(node_features=x, edge_features=adj, mask=mask, **other_attr)
@@ -163,7 +166,7 @@ class MolecularGraphDatasetFromSmilesDataFrame(MolecularGraphDatasetFromSmiles):
         if self.randomize_smiles:
             smiles = Chem.MolToSmiles(Chem.MolFromSmiles(smiles), doRandom=True)
         graph = MolecularGraph.from_smiles(smiles)
-        graph.mol_properties = props
+        graph.molecular_properties = props
         return graph
 
 

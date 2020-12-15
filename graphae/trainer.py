@@ -17,7 +17,7 @@ class PLGraphAE(pl.LightningModule):
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
         self.pi_ae = PIVAE(hparams)
-        self.property_predictor = PropertyPredictor(hparams)
+        #self.property_predictor = PropertyPredictor(hparams)
         self.critic = Critic(hparams["alpha"])
         self.tau_scheduler = TauScheduler(
             start_value=hparams["tau"],
@@ -31,7 +31,7 @@ class PLGraphAE(pl.LightningModule):
 
     def training_step(self, graph, batch_idx):
         tau = self.tau_scheduler.tau
-        graph_pred, perm, graph_emb = self(
+        graph_pred, graph_emb, perm = self(
             graph=graph,
             training=True,
             tau=tau
@@ -47,7 +47,7 @@ class PLGraphAE(pl.LightningModule):
 
     def validation_step(self, graph, batch_idx):
         tau = self.tau_scheduler.tau
-        graph_pred, perm, graph_emb = self(
+        graph_pred, graph_emb, perm = self(
             graph=graph,
             training=True,
             tau=tau
@@ -58,7 +58,7 @@ class PLGraphAE(pl.LightningModule):
             perm=perm,
             prefix="val",
         )
-        graph_pred, perm, graph_emb = self(
+        graph_pred, graph_emb, perm = self(
             graph=graph,
             training=False,
             tau=tau
@@ -96,8 +96,8 @@ class PLGraphAE(pl.LightningModule):
     def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_idx, optimizer_closure=None, second_order_closure=None, on_tpu=False,
                        using_native_amp=False, using_lbfgs=False):
         # warm up lr
-        if self.trainer.global_step < 2000:
-            lr_scale = min(1., float(self.trainer.global_step + 1) / 2000.)
+        if self.trainer.global_step < 5000:
+            lr_scale = min(1., float(self.trainer.global_step + 1) / 5000.)
             for pg in optimizer.param_groups:
                 pg['lr'] = lr_scale * self.hparams.lr
 

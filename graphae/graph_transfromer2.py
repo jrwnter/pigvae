@@ -39,8 +39,8 @@ class PositionwiseFeedForward(torch.nn.Module):
 
     def __init__(self, d_in, d_hid, dropout=0.1):
         super().__init__()
-        self.w_1 = Linear(d_in, d_hid) # position-wise
-        self.w_2 = Linear(d_hid, d_in) # position-wise
+        self.w_1 = Linear(d_in, d_hid)  # position-wise
+        self.w_2 = Linear(d_hid, d_in)  # position-wise
         self.layer_norm = LayerNorm(d_in)
         self.dropout = Dropout(dropout)
 
@@ -136,8 +136,6 @@ class GraphSelfAttention(torch.nn.Module):
         ek = self.w_eks(edge_emb).view(batch_size, num_nodes, num_nodes, self.n_head, self.ek_dim)
         v = self.w_vs(node_emb).view(batch_size, num_nodes, self.n_head, self.v_dim)"""
         node_emb, edge_emb = node_emb[mask], edge_emb[adj_mask]
-        node_emb = self.layer_norm_node(node_emb)
-        edge_emb = self.layer_norm_edge(edge_emb)
         q = torch.empty((batch_size, num_nodes, self.n_head, self.q_dim), device=device)
         nk = torch.empty((batch_size, num_nodes, self.n_head, self.nk_dim), device=device)
         ek = torch.empty((batch_size, num_nodes, num_nodes, self.n_head, self.ek_dim), device=device)
@@ -165,5 +163,7 @@ class GraphSelfAttention(torch.nn.Module):
         edge_emb_out.masked_scatter_(adj_mask[:, :, :, None], self.dropout(self.edge_fc(node_emb_combined[adj_mask])))
         node_emb_out += node_residual
         edge_emb_out += edge_residual
+        node_emb_out = self.layer_norm_node(node_emb_out)
+        edge_emb_out = self.layer_norm_edge(edge_emb_out)
 
         return node_emb_out, edge_emb_out, attn

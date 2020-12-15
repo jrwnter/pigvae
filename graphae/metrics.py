@@ -12,7 +12,7 @@ CHARGE_TYPE_WEIGHTS = torch.Tensor([0.2596, 0.2596, 0.2205, 0.2596, 0.0006])
 HYBRIDIZATION_TYPE_WEIGHT = torch.Tensor(
     [2.4989e-01, 4.4300e-04, 4.6720e-06, 7.8765e-06, 2.4989e-01, 2.4989e-01, 2.4989e-01])
 #EDGE_WEIGHTS = torch.Tensor([5.4339e-03, 4.5212e-02, 9.4218e-01, 6.8846e-03, 2.8955e-04])
-EDGE_WEIGHTS = torch.Tensor([1, 10, 100, 1, 1])
+EDGE_WEIGHTS = torch.Tensor([2, 10, 100, 2, 1])
 
 # 16
 
@@ -52,16 +52,15 @@ class Critic(torch.nn.Module):
             graph_true=graph_true,
             graph_pred=graph_pred
         )
-        """
         perm_loss = self.perm_loss(perm)
         property_loss = self.property_loss(
             input=graph_true.molecular_properties,
             target=graph_pred.molecular_properties,
         )
         loss = {**recon_loss, "perm_loss": perm_loss, "property_loss": property_loss}
-        loss["loss"] = loss["loss"] + 0.1 * property_loss
-        """
-        loss = recon_loss
+        #loss = {**recon_loss, "perm_loss": perm_loss}
+        loss["loss"] = loss["loss"] + 0.05 * perm_loss + 0.01 * property_loss
+        #loss = recon_loss
         return loss
 
     def node_metrics(self, nodes_pred, nodes_true):
@@ -209,6 +208,7 @@ class PermutaionMatrixPenalty(torch.nn.Module):
         return e
 
     def forward(self, perm, eps=10e-8):
+        #print(perm.shape)
         perm = perm + eps
         entropy_col = self.entropy(perm, axis=1, normalize=False)
         entropy_row = self.entropy(perm, axis=2, normalize=False)
