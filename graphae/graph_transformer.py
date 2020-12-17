@@ -2,7 +2,8 @@ import numpy as np
 import torch
 from torch.nn import Linear, Dropout, LayerNorm
 from torch.nn.functional import softmax, relu
-
+from torch_geometric.utils import softmax as sparse_softmax
+from torch_scatter import scatter
 
 """
 adapted from https://github.com/jadore801120/attention-is-all-you-need-pytorch
@@ -22,7 +23,7 @@ class Transformer(torch.nn.Module):
 
     def forward(self, x, mask, attn_mask):
         for i in range(self.num_layers):
-            x, _ = self.self_attn_layers[i](x, mask, attn_mask)
+            x = self.self_attn_layers[i](x, mask, attn_mask)
             x = self.pff_layers[i](x)
         return x
 
@@ -49,7 +50,51 @@ class PositionwiseFeedForward(torch.nn.Module):
         return x
 
 
+# TODO: do einsum to get attn but infalte to dene afterwards and than multiply with v. faster?
+
+# TODO: Use sparse mm (some how batched?
 class ScaledDotProductWithEdgeAttention(torch.nn.Module):
+    def __init__(self, k_dim, temperature, dropout=0.1):
+        super().__init__()
+        self.k_dim = k_dim
+        self.temperature = temperature
+        self.dropout = torch.nn.Dropout(dropout)
+
+    def forward(self, q, k, v, mask):
+        # q:  b x nh x nn x dv
+        # k:  b x nh x nn x dv
+        # e:  b x nh x nn x nn x de
+
+        # k.T:  b x nh x dv x nn
+        # q x k.T --> b x nh x nn x nn
+
+        batch_size, num_heads, len_x, emb_dim = q.size(0), q.size(1), q.size(2), q.size(3)
+        mask = mask.unsqueeze(1).expand(-1, num_heads, -1, -1)
+        idx1, idx2, idx3, idx4 = torch.where(mask)
+        mask = mask.any(dim=-1)
+        idx3_ = idx3 + idx1 * len_x + idx2 * batch_size * len_x
+        q = q[idx1, idx2, idx3]
+        k = k[idx1, idx2, idx4]
+        attn = torch.sum(q * k, dim=-1)
+        del q, k
+        v = v[idx1, idx2, idx4]
+        del idx1, idx2, idx3
+        attn = attn / self.temperature
+        attn = sparse_softmax(attn, idx3_)
+        idx3_max = idx3_.max()
+        attn = self.dropout(attn)
+        v = attn.unsqueeze(-1) * v
+        del attn
+        v = scatter(v, idx3_, dim=0, reduce='sum')
+        del idx3_
+        # mask out indices that are masked (graphs with num_nodes < max_num_nodes
+        #print(output.shape, mask.any(dim=-1).flatten().shape, mask.shape, mask.sum(), q.shape, idx3.shape, idx3_.max(), torch.unique(idx3_).shape)
+        v = v.new_zeros(batch_size, num_heads, len_x, emb_dim).masked_scatter_(mask.unsqueeze(-1), v[mask.flatten()[:idx3_max + 1]])
+        #out = output.new_zeros(batch_sizenum_heads, len_x)
+        return v
+
+
+"""class ScaledDotProductWithEdgeAttention(torch.nn.Module):
     def __init__(self, k_dim, temperature, dropout=0.1):
         super().__init__()
         self.k_dim = k_dim
@@ -67,6 +112,7 @@ class ScaledDotProductWithEdgeAttention(torch.nn.Module):
         attn = torch.matmul(q, k.transpose(2, 3))
         attn = attn / self.temperature
 
+
         # attn: b x nh x nn x nn
         if mask is not None:
             attn = attn.masked_fill(mask == 0, -1e9)
@@ -75,7 +121,8 @@ class ScaledDotProductWithEdgeAttention(torch.nn.Module):
         attn = self.dropout(attn)
         output = torch.matmul(attn, v)  # output: b x nh x nn x dv
 
-        return output, attn
+        return output
+"""
 
 
 class SelfAttention(torch.nn.Module):
@@ -99,7 +146,7 @@ class SelfAttention(torch.nn.Module):
         self.dropout = Dropout(dropout)
         self.layer_norm = LayerNorm(hidden_dim)
 
-    def forward(self, x, mask, attn_mask):
+    def forward(self, x, mask):
         batch_size, len_x = x.size(0), x.size(1)
         device = x.device
 
@@ -118,7 +165,9 @@ class SelfAttention(torch.nn.Module):
         # Transpose for attention dot product: b x nh x lx x dv
         q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
 
-        x, attn = self.attention(q, k, v, mask=attn_mask.unsqueeze(1))  # unsqueeze For head axs broadcasting
+        attn_mask = mask
+        x = self.attention(q, k, v, mask=attn_mask.unsqueeze(1))  # unsqueeze For head axs broadcasting
+        #x = self.attention(q, k, v, mask=attn_mask)
 
         # Transpose to move the head dimension back: b x lx x n x dv
         # Combine the last two dimensions to concatenate all the heads together: b x lx x (nh*dv)
@@ -128,7 +177,7 @@ class SelfAttention(torch.nn.Module):
         x_out += residual
         x_out = self.layer_norm(x_out)
 
-        return x_out, attn
+        return x_out
 
 
 class PositionalEncoding(torch.nn.Module):

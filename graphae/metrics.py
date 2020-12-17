@@ -12,7 +12,7 @@ CHARGE_TYPE_WEIGHTS = torch.Tensor([0.2596, 0.2596, 0.2205, 0.2596, 0.0006])
 HYBRIDIZATION_TYPE_WEIGHT = torch.Tensor(
     [2.4989e-01, 4.4300e-04, 4.6720e-06, 7.8765e-06, 2.4989e-01, 2.4989e-01, 2.4989e-01])
 #EDGE_WEIGHTS = torch.Tensor([5.4339e-03, 4.5212e-02, 9.4218e-01, 6.8846e-03, 2.8955e-04])
-EDGE_WEIGHTS = torch.Tensor([2, 10, 100, 2, 1])
+EDGE_WEIGHTS = torch.Tensor([1, 2, 10, 100, 2])
 
 # 16
 
@@ -141,10 +141,10 @@ class GraphReconstructionLoss(torch.nn.Module):
     def forward(self, graph_true, graph_pred):
         mask = graph_true.mask
         adj_mask = mask.unsqueeze(1) * mask.unsqueeze(2)
-        nodes_true = graph_true.node_features[mask]
-        nodes_pred = graph_pred.node_features[mask]
-        edges_true = graph_true.edge_features[adj_mask]
-        edges_pred = graph_pred.edge_features[adj_mask]
+        nodes_true = graph_true.node_features[mask][:, :20]
+        nodes_pred = graph_pred.node_features[mask][:, :20]
+        edges_true = graph_true.edge_features[adj_mask][:, :5]
+        edges_pred = graph_pred.edge_features[adj_mask][:, :5]
 
         element_type_pred = nodes_pred[:, :11]
         element_type_true = torch.argmax(nodes_true[:, :11], axis=-1).flatten()

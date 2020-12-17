@@ -81,7 +81,7 @@ class PLGraphAE(pl.LightningModule):
         lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
             factor=0.5,
-            patience=20,
+            patience=30,
             cooldown=50,
             min_lr=1e-6,
         )

@@ -5,6 +5,7 @@ from torch.utils.data.distributed import DistributedSampler
 import pandas as pd
 import pytorch_lightning as pl
 from rdkit import Chem
+from rdkit.Chem.rdmolops import GetDistanceMatrix
 from torch_geometric.data import Data
 from torch_geometric.transforms import ToDense
 from torch_geometric.utils import to_dense_batch, to_dense_adj
@@ -22,6 +23,8 @@ NUM_ELEMENTS = len(ELEM_LIST)
 NUM_ATOMS_MEAN = 23.101
 NUM_ATOMS_STD = 6.652
 
+MEAN_DISTANCE = 4.814012207760507
+STD_DISTANCE = 2.991864705281403
 
 
 class DenseGraphBatch(Data):
@@ -38,11 +41,15 @@ class DenseGraphBatch(Data):
         x = []
         mask = []
         adj = []
-        other_attr = {key: [] for key in graph_list[0].keys if key not in ['x', 'edge_index', 'edge_attr']}
+        other_attr = {key: [] for key in graph_list[0].keys if key not in ['x', 'edge_index', 'edge_attr', 'distance_matrix']}
         for graph in graph_list:
             x_, mask_ = to_dense_batch(graph.x, max_num_nodes=max_num_nodes)
             adj_ = to_dense_adj(graph.edge_index, edge_attr=graph.edge_attr, max_num_nodes=max_num_nodes)
             adj_ = add_empty_edge_type(adj_)
+            dm = torch.ones(max_num_nodes, max_num_nodes) * -100
+            dm[:graph.num_nodes, :graph.num_nodes] = graph.distance_matrix
+            dm = dm.unsqueeze(0).unsqueeze(-1)
+            adj_ = torch.cat((adj_, dm), axis=-1)
             x.append(x_)
             mask.append(mask_)
             adj.append(adj_)
@@ -145,7 +152,9 @@ class MolecularGraphDatasetFromSmiles(Dataset):
         smiles = self.smiles[idx]
         if self.randomize_smiles:
             smiles = Chem.MolToSmiles(Chem.MolFromSmiles(smiles), doRandom=True)
-        graph = MolecularGraph.from_smiles(smiles)
+        mol = Chem.MolFromSmiles(smiles)
+        graph = MolecularGraph.from_mol(smiles)
+        graph.distance_matrix = torch.from_numpy((GetDistanceMatrix(mol) - MEAN_DISTANCE) / STD_DISTANCE).float()
         return graph
 
 
@@ -165,7 +174,9 @@ class MolecularGraphDatasetFromSmilesDataFrame(MolecularGraphDatasetFromSmiles):
         props = props.unsqueeze(0)
         if self.randomize_smiles:
             smiles = Chem.MolToSmiles(Chem.MolFromSmiles(smiles), doRandom=True)
-        graph = MolecularGraph.from_smiles(smiles)
+        mol = Chem.MolFromSmiles(smiles)
+        graph = MolecularGraph.from_mol(mol)
+        graph.distance_matrix = torch.from_numpy((GetDistanceMatrix(mol) - MEAN_DISTANCE) / STD_DISTANCE).float()
         graph.molecular_properties = props
         return graph
 
@@ -241,9 +252,10 @@ def one_hot_atom_features(atom):
     atom_feat = []
     atom_feat.extend(one_hot_encoding(atom.GetSymbol(), ELEM_LIST))
     atom_feat.extend(one_hot_encoding(atom.GetFormalCharge(), CHARGE_LIST))
-    #atom_feat.extend(one_hot_encoding(atom.GetHybridization(), HYBRIDIZATION_TYPE_LIST))
     atom_feat.extend(one_hot_encoding(atom.GetNumExplicitHs(), HS_LIST))
-    #atom_feat.extend([atom.GetIsAromatic()])
+    atom_feat.extend(one_hot_encoding(atom.GetNumImplicitHs(), HS_LIST))
+    atom_feat.extend([int(atom.GetIsAromatic())])
+    atom_feat.extend([int(atom.IsInRing())])
     return atom_feat
 
 
@@ -254,7 +266,11 @@ def one_hot_bond_features(bond):
         bond_type == Chem.rdchem.BondType.DOUBLE,
         bond_type == Chem.rdchem.BondType.TRIPLE,
         bond_type == Chem.rdchem.BondType.AROMATIC,
-        #bond.IsInRing()
+        bond.IsInRing(),
+        bond.IsInRingSize(3),
+        bond.IsInRingSize(4),
+        bond.IsInRingSize(5),
+        bond.IsInRingSize(6),
     ]
     return bond_feat
 
@@ -334,7 +350,7 @@ def add_empty_edge_type(adj):
     mask = torch.all(adj == 0, axis=-1)
     empty_edge = torch.zeros((shape[0], shape[1], shape[2], 1)).type_as(adj)
     empty_edge[mask] = 1
-    adj = torch.cat((adj, empty_edge), axis=-1)
+    adj = torch.cat((empty_edge, adj), axis=-1)
     return adj
 
 

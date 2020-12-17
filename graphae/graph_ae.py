@@ -18,9 +18,10 @@ class GraphEncoder(torch.nn.Module):
             v_dim=64,
             num_heads=8,
             ppf_hidden_dim=1024,
-            num_layers=4
+            num_layers=6
         )
-        self.fc_in = Linear(2 * (hparams["num_node_features"] + 1) + hparams["num_edge_features"] + 1, 256)
+        # 11 edge features (including empty edge) and 26 node features + emb node feature and emb node edge
+        self.fc_in = Linear(2 * (26 + 1) + 11 + 1, 256)
         self.layer_norm = LayerNorm(256)
         self.dropout = Dropout(0.1)
 
@@ -32,9 +33,10 @@ class GraphEncoder(torch.nn.Module):
         emb_node = emb_node.expand(batch_size, -1, -1)
         node_features = torch.cat((emb_node, node_features), dim=1)
         emb_node_edges = torch.Tensor(
-            (num_edge_features - 1) * [0] + [1]).view(1, 1, 1, num_edge_features).type_as(edge_features)
+            num_edge_features * [0] + [1]).view(1, 1, 1, num_edge_features + 1).type_as(edge_features)
         emb_node_edges_row = emb_node_edges.expand(batch_size, num_nodes, -1, -1)
         emb_node_edges_col = emb_node_edges.expand(batch_size, -1, num_nodes + 1, -1)
+        edge_features = torch.cat((edge_features, edge_features.new_zeros(batch_size, num_nodes, num_nodes, 1)), dim=3)
         edge_features = torch.cat((emb_node_edges_row, edge_features), dim=2)
         edge_features = torch.cat((emb_node_edges_col, edge_features), dim=1)
         mask = torch.cat((torch.Tensor(batch_size * [1]).view(batch_size, 1).type_as(mask), mask), dim=1)
@@ -73,11 +75,11 @@ class GraphDecoder(torch.nn.Module):
             v_dim=64,
             num_heads=8,
             ppf_hidden_dim=1024,
-            num_layers=4
+            num_layers=6
         )
         self.fc_in = Linear(256 + 2 * 64, 256)
-        self.node_fc_out = Linear(256, hparams["num_node_features"])
-        self.edge_fc_out = Linear(256, hparams["num_edge_features"] + 1)
+        self.node_fc_out = Linear(256, 20)
+        self.edge_fc_out = Linear(256, 5)
         self.dropout = Dropout(0.1)
         self.layer_norm = LayerNorm(256)
 
@@ -125,6 +127,7 @@ class Permuter(torch.nn.Module):
 
     def forward(self, node_features, mask, hard=False, tau=1.0):
         batch_size, num_nodes = mask.size(0), mask.size(1)
+        node_features = node_features + torch.randn_like(node_features) * 0.05
         perm = self.permuter(node_features, mask, hard=hard, tau=tau)
         eye = torch.eye(num_nodes, num_nodes).unsqueeze(0).expand(batch_size, -1, -1).type_as(perm)
         mask = mask.unsqueeze(-1).expand(-1, -1, num_nodes)
@@ -198,9 +201,9 @@ def get_attention_mask(mask, emb_node=False):
     batch_size, num_nodes = mask.size(0), mask.size(1)
     idxs = torch.arange(num_nodes, device=mask.device)
     grid = torch.stack(torch.meshgrid([idxs, idxs]), dim=-1)
-    grid_ = grid.unsqueeze(-2).unsqueeze(-2)
-    i = torch.arange(num_nodes, device=mask.device).view(1, 1, num_nodes, 1, 1)
-    j = torch.arange(num_nodes, device=mask.device).view(1, 1, 1, num_nodes, 1)
+    grid_ = grid.unsqueeze(0).unsqueeze(0)
+    i = torch.arange(num_nodes, device=mask.device).view(num_nodes, 1, 1, 1, 1)
+    j = torch.arange(num_nodes, device=mask.device).view(1, num_nodes, 1, 1, 1)
     b1 = grid_ == i
     if emb_node:
         b2 = (grid_ != i) & (grid_ != j) & (grid_ != 0)
