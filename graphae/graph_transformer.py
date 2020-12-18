@@ -21,9 +21,9 @@ class Transformer(torch.nn.Module):
             PositionwiseFeedForward(hidden_dim, ppf_hidden_dim)
             for _ in range(num_layers)])
 
-    def forward(self, x, mask, attn_mask):
+    def forward(self, x, mask):
         for i in range(self.num_layers):
-            x = self.self_attn_layers[i](x, mask, attn_mask)
+            x = self.self_attn_layers[i](x, mask)
             x = self.pff_layers[i](x)
         return x
 
@@ -50,9 +50,6 @@ class PositionwiseFeedForward(torch.nn.Module):
         return x
 
 
-# TODO: do einsum to get attn but infalte to dene afterwards and than multiply with v. faster?
-
-# TODO: Use sparse mm (some how batched?
 class ScaledDotProductWithEdgeAttention(torch.nn.Module):
     def __init__(self, k_dim, temperature, dropout=0.1):
         super().__init__()
@@ -60,58 +57,16 @@ class ScaledDotProductWithEdgeAttention(torch.nn.Module):
         self.temperature = temperature
         self.dropout = torch.nn.Dropout(dropout)
 
-    def forward(self, q, k, v, mask):
-        # q:  b x nh x nn x dv
-        # k:  b x nh x nn x dv
-        # e:  b x nh x nn x nn x de
-
-        # k.T:  b x nh x dv x nn
-        # q x k.T --> b x nh x nn x nn
-
-        batch_size, num_heads, len_x, emb_dim = q.size(0), q.size(1), q.size(2), q.size(3)
-        mask = mask.unsqueeze(1).expand(-1, num_heads, -1, -1)
-        idx1, idx2, idx3, idx4 = torch.where(mask)
-        mask = mask.any(dim=-1)
-        idx3_ = idx3 + idx1 * len_x + idx2 * batch_size * len_x
-        q = q[idx1, idx2, idx3]
-        k = k[idx1, idx2, idx4]
-        attn = torch.sum(q * k, dim=-1)
-        del q, k
-        v = v[idx1, idx2, idx4]
-        del idx1, idx2, idx3
-        attn = attn / self.temperature
-        attn = sparse_softmax(attn, idx3_)
-        idx3_max = idx3_.max()
-        attn = self.dropout(attn)
-        v = attn.unsqueeze(-1) * v
-        del attn
-        v = scatter(v, idx3_, dim=0, reduce='sum')
-        del idx3_
-        # mask out indices that are masked (graphs with num_nodes < max_num_nodes
-        #print(output.shape, mask.any(dim=-1).flatten().shape, mask.shape, mask.sum(), q.shape, idx3.shape, idx3_.max(), torch.unique(idx3_).shape)
-        v = v.new_zeros(batch_size, num_heads, len_x, emb_dim).masked_scatter_(mask.unsqueeze(-1), v[mask.flatten()[:idx3_max + 1]])
-        #out = output.new_zeros(batch_sizenum_heads, len_x)
-        return v
-
-
-"""class ScaledDotProductWithEdgeAttention(torch.nn.Module):
-    def __init__(self, k_dim, temperature, dropout=0.1):
-        super().__init__()
-        self.k_dim = k_dim
-        self.temperature = temperature
-        self.dropout = torch.nn.Dropout(dropout)
 
     def forward(self, q, k, v, mask=None):
-        # q:  b x nh x nn x dv
-        # k:  b x nh x nn x dv
-        # e:  b x nh x nn x nn x de
+        # q:  b x nh x nn x nn x dv
+        # k:  b x nh x nn x nn x dv
 
-        # k.T:  b x nh x dv x nn
-        # q x k.T --> b x nh x nn x nn
+        # k.T:  b x nh x nn x dv x nn
+        # q x k.T --> b x nh x nn x nn x nn
 
-        attn = torch.matmul(q, k.transpose(2, 3))
+        attn = torch.matmul(q, k.transpose(3, 4))
         attn = attn / self.temperature
-
 
         # attn: b x nh x nn x nn
         if mask is not None:
@@ -119,12 +74,12 @@ class ScaledDotProductWithEdgeAttention(torch.nn.Module):
 
         attn = softmax(attn, dim=-1)
         attn = self.dropout(attn)
-        output = torch.matmul(attn, v)  # output: b x nh x nn x dv
+        output = torch.matmul(attn, v)  # output: b x nh x nn x nn x dv
 
         return output
-"""
 
 
+# TODO: add layer norm before attenion?
 class SelfAttention(torch.nn.Module):
     def __init__(self, n_head, hidden_dim, k_dim, v_dim, dropout=0.1):
         super().__init__()
@@ -147,33 +102,39 @@ class SelfAttention(torch.nn.Module):
         self.layer_norm = LayerNorm(hidden_dim)
 
     def forward(self, x, mask):
-        batch_size, len_x = x.size(0), x.size(1)
+        # x: b x nn x nn x dv
+
+        batch_size, num_nodes = x.size(0), x.size(1)
         device = x.device
 
         residual = x
 
         # Pass through the pre-attention projection: b x lx x (n*dv)
-        # Separate different heads: b x lx x nh x dv
+        # Separate different heads: b x nn x nn x nh x dv
         x = x[mask]
-        q = torch.empty((batch_size, len_x, self.n_head, self.q_dim), device=device)
-        k = torch.empty((batch_size, len_x, self.n_head, self.k_dim), device=device)
-        v = torch.empty((batch_size, len_x, self.n_head, self.v_dim), device=device)
-        q.masked_scatter_(mask[:, :, None, None], self.w_qs(x))
-        k.masked_scatter_(mask[:, :, None, None], self.w_ks(x))
-        v.masked_scatter_(mask[:, :, None, None], self.w_vs(x))
+        q = torch.empty((batch_size, num_nodes, num_nodes, self.n_head, self.q_dim), device=device)
+        k = torch.empty((batch_size, num_nodes, num_nodes, self.n_head, self.k_dim), device=device)
+        v = torch.empty((batch_size, num_nodes, num_nodes, self.n_head, self.v_dim), device=device)
+        q.masked_scatter_(mask[:, :, :, None, None], self.w_qs(x))
+        k.masked_scatter_(mask[:, :, :, None, None], self.w_ks(x))
+        v.masked_scatter_(mask[:, :, :, None, None], self.w_vs(x))
 
-        # Transpose for attention dot product: b x nh x lx x dv
-        q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
+        # Transpose for attention dot product: b x nh x lx x dv ; k edge features are flip for block attention
+        q, k, v = q.permute(0, 3, 1, 2, 4), k.permute(0, 3, 2, 1, 4), v.permute(0, 3, 1, 2, 4)
 
-        attn_mask = mask
+        attn_mask = mask.masked_fill(torch.eye(num_nodes, num_nodes, device=device).bool(), 0)
+        attn_mask = attn_mask.unsqueeze(1).expand(-1, num_nodes, -1, -1)
+        attn_mask = attn_mask * (torch.eye(
+            num_nodes, num_nodes, device=device) == 0).bool().unsqueeze(0).unsqueeze(-2).expand(-1, -1, num_nodes, -1)
+
         x = self.attention(q, k, v, mask=attn_mask.unsqueeze(1))  # unsqueeze For head axs broadcasting
         #x = self.attention(q, k, v, mask=attn_mask)
 
-        # Transpose to move the head dimension back: b x lx x n x dv
-        # Combine the last two dimensions to concatenate all the heads together: b x lx x (nh*dv)
-        x = x.transpose(1, 2).contiguous().view(batch_size, len_x, -1)
-        x_out = torch.empty((batch_size, len_x, self.hidden_dim), device=device)
-        x_out.masked_scatter_(mask[:, :, None], self.dropout(self.fc(x[mask])))
+        # Transpose to move the head dimension back: b x nn x nn x nh x dv
+        # Combine the last two dimensions to concatenate all the heads together: b x nn x nn x (nh*dv)
+        x = x.permute(0, 3, 1, 2, 4).contiguous().view(batch_size, num_nodes, num_nodes, -1)
+        x_out = torch.empty((batch_size, num_nodes, num_nodes, self.hidden_dim), device=device)
+        x_out.masked_scatter_(mask.unsqueeze(-1), self.dropout(self.fc(x[mask])))
         x_out += residual
         x_out = self.layer_norm(x_out)
 

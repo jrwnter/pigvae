@@ -16,9 +16,9 @@ class GraphEncoder(torch.nn.Module):
             hidden_dim=256,
             k_dim=64,
             v_dim=64,
-            num_heads=8,
+            num_heads=12,
             ppf_hidden_dim=1024,
-            num_layers=6
+            num_layers=12 #12
         )
         # 11 edge features (including empty edge) and 26 node features + emb node feature and emb node edge
         self.fc_in = Linear(2 * (26 + 1) + 11 + 1, 256)
@@ -47,19 +47,13 @@ class GraphEncoder(torch.nn.Module):
         batch_size, num_nodes = node_features.size(0), node_features.size(1)
 
         edge_mask = mask.unsqueeze(1) * mask.unsqueeze(2)
-        attn_mask = get_attention_mask(edge_mask, emb_node=True)
-        # flatten edge dims (edges are nodes now)
-        num_edges = num_nodes * num_nodes
-        edge_mask = edge_mask.view(batch_size, num_edges)
-        attn_mask = attn_mask.view(batch_size, num_edges, num_edges)
         node_features_combined = torch.cat(
             (node_features.unsqueeze(2).repeat(1, 1, num_nodes, 1),
              node_features.unsqueeze(1).repeat_interleave(num_nodes, dim=1)),
             dim=-1)
-        x = torch.cat((edge_features, node_features_combined), dim=-1).view(batch_size, num_edges, -1)
+        x = torch.cat((edge_features, node_features_combined), dim=-1)
         x = self.layer_norm(self.dropout(self.fc_in(x)))
-        x = self.graph_transformer(x, mask=edge_mask, attn_mask=attn_mask)
-        x = x.view(batch_size, num_nodes, num_nodes, -1)
+        x = self.graph_transformer(x, mask=edge_mask)
         node_features = torch.diagonal(x, dim1=1, dim2=2).transpose(1, 2)
         graph_emb, node_features = node_features[:, 0], node_features[:, 1:]
         return graph_emb, node_features
@@ -73,9 +67,9 @@ class GraphDecoder(torch.nn.Module):
             hidden_dim=256,
             k_dim=64,
             v_dim=64,
-            num_heads=8,
+            num_heads=12,
             ppf_hidden_dim=1024,
-            num_layers=6
+            num_layers=12
         )
         self.fc_in = Linear(256 + 2 * 64, 256)
         self.node_fc_out = Linear(256, 20)
@@ -86,11 +80,6 @@ class GraphDecoder(torch.nn.Module):
     def forward(self, graph_emb, perm, mask):
         batch_size, num_nodes = mask.size(0), mask.size(1)
         edge_mask = mask.unsqueeze(1) * mask.unsqueeze(2)
-        attn_mask = get_attention_mask(edge_mask, emb_node=False)
-        # flatten edge dims (edges are nodes now)
-        num_edges = num_nodes * num_nodes
-        edge_mask = edge_mask.view(batch_size, num_edges)
-        attn_mask = attn_mask.view(batch_size, num_edges, num_edges)
 
         pos_emb = self.posiotional_embedding(batch_size, num_nodes)
         if perm is not None:
@@ -98,13 +87,12 @@ class GraphDecoder(torch.nn.Module):
         pos_emb_combined = torch.cat(
             (pos_emb.unsqueeze(2).repeat(1, 1, num_nodes, 1),
              pos_emb.unsqueeze(1).repeat_interleave(num_nodes, dim=1)),
-            dim=-1).view(batch_size, num_nodes * num_nodes, -1)  # b x nn*nn x d
+            dim=-1)
 
-        x = graph_emb.unsqueeze(1).expand(-1, num_nodes * num_nodes, -1)
+        x = graph_emb.unsqueeze(1).unsqueeze(1).expand(-1, num_nodes, num_nodes, -1)
         x = torch.cat((x, pos_emb_combined), dim=-1)
         x = self.layer_norm(self.dropout(self.fc_in(x)))
-        x = self.graph_transformer(x, mask=edge_mask, attn_mask=attn_mask)
-        x = x.view(batch_size, num_nodes, num_nodes, -1)
+        x = self.graph_transformer(x, mask=edge_mask)
 
         node_features = torch.diagonal(x, dim1=1, dim2=2).transpose(1, 2)
         edge_features = x
@@ -178,8 +166,8 @@ class GraphAE(torch.nn.Module):
 
     @staticmethod
     def logits_to_one_hot(graph):
-        nodes = graph.node_features[:, :, :-1]
-        edges = graph.edge_features[:, :, :]
+        nodes = graph.node_features
+        edges = graph.edge_features
         batch_size, num_nodes = nodes.size(0), nodes.size(1)
         element_type = torch.argmax(nodes[:, :, :11], axis=-1).unsqueeze(-1)
         element_type = torch.zeros((batch_size, num_nodes, 11)).type_as(element_type).scatter_(2, element_type, 1)
@@ -195,20 +183,3 @@ class GraphAE(torch.nn.Module):
         graph.node_features = nodes
         graph.edge_features = edges
         return graph
-
-
-def get_attention_mask(mask, emb_node=False):
-    batch_size, num_nodes = mask.size(0), mask.size(1)
-    idxs = torch.arange(num_nodes, device=mask.device)
-    grid = torch.stack(torch.meshgrid([idxs, idxs]), dim=-1)
-    grid_ = grid.unsqueeze(0).unsqueeze(0)
-    i = torch.arange(num_nodes, device=mask.device).view(num_nodes, 1, 1, 1, 1)
-    j = torch.arange(num_nodes, device=mask.device).view(1, num_nodes, 1, 1, 1)
-    b1 = grid_ == i
-    if emb_node:
-        b2 = (grid_ != i) & (grid_ != j) & (grid_ != 0)
-    else:
-        b2 = (grid_ != i) & (grid_ != j)
-    attn_mask = b1[:, :, :, :, 1] * b2[:, :, :, :, 0]
-    attn_mask = attn_mask.unsqueeze(0) * mask.unsqueeze(-1).unsqueeze(-1)
-    return attn_mask

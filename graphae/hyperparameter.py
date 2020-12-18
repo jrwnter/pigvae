@@ -17,7 +17,7 @@ def add_arguments(parser):
     parser.add_argument('-i', '--id', type=int, default=0)
     parser.add_argument('-g', '--gpus', default=1, type=int)
     parser.add_argument('-e', '--num_epochs', default=5000, type=int)
-    parser.add_argument("--num_eval_samples", default=8192, type=int)
+    parser.add_argument("--num_eval_samples", default=8192*4, type=int)
     parser.add_argument("--num_samples_per_epoch", default=800000000, type=int)
     parser.add_argument("--num_samples_per_epoch_inc", default=2000000, type=int)
     parser.add_argument("--eval_freq", default=1000, type=int)
