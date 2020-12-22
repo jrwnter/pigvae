@@ -1,8 +1,7 @@
 import torch
 from torch.nn import Linear, LayerNorm, Dropout
-#from graphae import encoder, decoder
+from torch.nn.functional import relu
 from graphae.graph_transformer import Transformer, PositionalEncoding
-from graphae.graph_transfromer2 import GraphTransformer
 from graphae import permuter
 from graphae.data import DenseGraphBatch
 from graphae.side_tasks import PropertyPredictor
@@ -16,7 +15,7 @@ class GraphEncoder(torch.nn.Module):
             hidden_dim=256,
             k_dim=64,
             v_dim=64,
-            num_heads=12,
+            num_heads=14,
             ppf_hidden_dim=1024,
             num_layers=12 #12
         )
@@ -67,7 +66,7 @@ class GraphDecoder(torch.nn.Module):
             hidden_dim=256,
             k_dim=64,
             v_dim=64,
-            num_heads=12,
+            num_heads=14,
             ppf_hidden_dim=1024,
             num_layers=12
         )
@@ -123,12 +122,34 @@ class Permuter(torch.nn.Module):
         return perm
 
 
+class BottleNeckEncoder(torch.nn.Module):
+    def __init__(self, d_in, d_out):
+        super().__init__()
+        self.w = Linear(d_in, d_out)
+
+    def forward(self, x):
+        x = torch.tanh(self.w(x))
+        return x
+
+
+class BottleNeckDecoder(torch.nn.Module):
+    def __init__(self, d_in,  d_out):
+        super().__init__()
+        self.w = Linear(d_in, d_out)
+
+    def forward(self, x):
+        x = self.w(x)
+        return x
+
 # TODO: get attn mask for encoder and decoder together
 class GraphAE(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
         self.encoder = GraphEncoder(hparams)
-        self.property_predictor = PropertyPredictor(256, 1024, hparams["num_properties"])
+        self.bottle_neck_encoder = BottleNeckEncoder(256, 64)
+        self.bottle_neck_decoder = BottleNeckDecoder(64, 256)
+        self.property_predictor = PropertyPredictor(64, 1024, hparams["num_properties"])
+        #self.property_predictor = PropertyPredictor(256, 1024, hparams["num_properties"])
         self.permuter = Permuter(hparams)
         self.decoder = GraphDecoder(hparams)
         self.node_dim = hparams["node_dim"]
@@ -144,13 +165,12 @@ class GraphAE(torch.nn.Module):
             edge_features=edge_features,
             mask=mask,
         )
+        graph_emb = self.bottle_neck_encoder(graph_emb)
         return graph_emb, node_features
 
-    def forward(self, graph, training, tau):
-        mask = graph.mask
-        graph_emb, node_features = self.encode(graph=graph)
+    def decode(self, graph_emb, perm, mask):
         properties = self.property_predictor(graph_emb)
-        perm = self.permuter(node_features, mask=mask, hard=not training, tau=tau)
+        graph_emb = self.bottle_neck_decoder(graph_emb)
         node_logits, edge_logits = self.decoder(
             graph_emb=graph_emb,
             perm=perm,
@@ -162,6 +182,12 @@ class GraphAE(torch.nn.Module):
             mask=mask,
             molecular_properties=properties
         )
+        return graph_pred
+
+    def forward(self, graph, training, tau):
+        graph_emb, node_features = self.encode(graph=graph)
+        perm = self.permuter(node_features, mask=graph.mask, hard=not training, tau=tau)
+        graph_pred = self.decode(graph_emb, perm, graph.mask)
         return graph_pred, graph_emb, perm
 
     @staticmethod

@@ -1,6 +1,6 @@
 import os
 DEFAULT_DATA_PATH = "/home/ggwaq/projects/graph_vae/smiles_with_features.csv.gz"
-DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves12")
+DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves13")
 
 
 def add_arguments(parser):
@@ -17,7 +17,7 @@ def add_arguments(parser):
     parser.add_argument('-i', '--id', type=int, default=0)
     parser.add_argument('-g', '--gpus', default=1, type=int)
     parser.add_argument('-e', '--num_epochs', default=5000, type=int)
-    parser.add_argument("--num_eval_samples", default=8192*4, type=int)
+    parser.add_argument("--num_eval_samples", default=8192*8, type=int)
     parser.add_argument("--num_samples_per_epoch", default=800000000, type=int)
     parser.add_argument("--num_samples_per_epoch_inc", default=2000000, type=int)
     parser.add_argument("--eval_freq", default=1000, type=int)
@@ -29,7 +29,7 @@ def add_arguments(parser):
 
     # TRAINING
     parser.add_argument("--resume_ckpt", default="", type=str)
-    parser.add_argument("-b", "--batch_size", default=256, type=int)
+    parser.add_argument("-b", "--batch_size", default=32, type=int)
     parser.add_argument("--lr", default=0.0001, type=float)
     parser.add_argument("--lr_scheduler_factor", default=0.5, type=float)
     parser.add_argument("--lr_scheduler_patience", default=2, type=int)
@@ -45,7 +45,7 @@ def add_arguments(parser):
     parser.set_defaults(vae=False)
 
     # GENERAL GRAPH PROPERTIES
-    parser.add_argument("--max_num_nodes", default=16, type=int)
+    parser.add_argument("--max_num_nodes", default=32, type=int)
     parser.add_argument("--num_node_features", default=20, type=int)
     parser.add_argument("--num_edge_features", default=4, type=int)
     parser.add_argument("--batch_norm", dest='batch_norm', action='store_true')

@@ -153,7 +153,7 @@ class MolecularGraphDatasetFromSmiles(Dataset):
         if self.randomize_smiles:
             smiles = Chem.MolToSmiles(Chem.MolFromSmiles(smiles), doRandom=True)
         mol = Chem.MolFromSmiles(smiles)
-        graph = MolecularGraph.from_mol(smiles)
+        graph = MolecularGraph.from_mol(mol)
         graph.distance_matrix = torch.from_numpy((GetDistanceMatrix(mol) - MEAN_DISTANCE) / STD_DISTANCE).float()
         return graph
 
