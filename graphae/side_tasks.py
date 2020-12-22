@@ -1,25 +1,21 @@
 import torch
-from torch.nn import Linear
-from graphae.fully_connected import FNN
+from torch.nn import Linear, Dropout, LayerNorm
+from torch.nn.functional import relu
 
 
 class PropertyPredictor(torch.nn.Module):
-    def __init__(self, hparams):
-        super().__init__()
 
-        self.fnn = FNN(
-            input_dim=hparams["emb_dim"],
-            hidden_dim=hparams["property_predictor_hidden_dim"],
-            output_dim=hparams["num_properties"],
-            num_layers=hparams["property_predictor_num_layers"],
-            non_linearity=hparams["nonlin"],
-            batch_norm=hparams["batch_norm"],
-        )
-        """self.fnn = Linear(
-            in_features=hparams["emb_dim"],
-            out_features=hparams["num_properties"]
-        )"""
+    def __init__(self, d_in, d_hid, d_out, dropout=0.1):
+        super().__init__()
+        self.w_1 = Linear(d_in, d_hid)
+        self.w_2 = Linear(d_hid, d_hid)
+        self.w_3 = Linear(d_hid, d_out)
+        self.layer_norm1 = LayerNorm(d_hid)
+        self.layer_norm2 = LayerNorm(d_hid)
+        self.dropout = Dropout(dropout)
 
     def forward(self, x):
-        y = self.fnn(x)
-        return y
+        x = self.layer_norm1(self.dropout(relu(self.w_1(x))))
+        x = self.layer_norm2(self.dropout(relu(self.w_2(x))))
+        x = self.w_3(x)
+        return x

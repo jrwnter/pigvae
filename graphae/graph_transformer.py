@@ -1,145 +1,168 @@
-import math
-from typing import Union, Tuple, Optional
-from torch_geometric.typing import PairTensor, Adj, OptTensor
+import numpy as np
+import torch
+from torch.nn import Linear, Dropout, LayerNorm
+from torch.nn.functional import softmax, relu
+from torch_geometric.utils import softmax as sparse_softmax
+from torch_scatter import scatter
 
-from torch import Tensor
-import torch.nn.functional as F
-from torch.nn import Linear
-from torch_geometric.nn.conv import MessagePassing
-from torch_geometric.utils import softmax
+"""
+adapted from https://github.com/jadore801120/attention-is-all-you-need-pytorch
+"""
 
 
-class TransformerConv(MessagePassing):
-    r"""The graph transformer operator from the `"Masked Label Prediction:
-    Unified Message Passing Model for Semi-Supervised Classification"
-    <https://arxiv.org/abs/2009.03509>`_ paper
+class Transformer(torch.nn.Module):
+    def __init__(self, hidden_dim, k_dim, v_dim, num_heads, ppf_hidden_dim, num_layers):
+        super().__init__()
+        self.num_layers = num_layers
+        self.self_attn_layers = torch.nn.ModuleList([
+            SelfAttention(num_heads, hidden_dim, k_dim, v_dim)
+            for _ in range(num_layers)])
+        self.pff_layers = torch.nn.ModuleList([
+            PositionwiseFeedForward(hidden_dim, ppf_hidden_dim)
+            for _ in range(num_layers)])
 
-    .. math::
-        \mathbf{x}^{\prime}_i = \mathbf{W}_1 \mathbf{x}_i +
-        \sum_{j \in \mathcal{N}(i)} \alpha_{i,j} \mathbf{W}_2 \mathbf{x}_{j},
+    def forward(self, x, mask):
+        for i in range(self.num_layers):
+            x = self.self_attn_layers[i](x, mask)
+            x = self.pff_layers[i](x)
+        return x
 
-    where the attention coefficients :math:`\alpha_{i,j}` are computed via
-    multi-head dot product attention:
 
-    .. math::
-        \alpha_{i,j} = \textrm{softmax} \left(
-        \frac{(\mathbf{W}_3\mathbf{x}_i)^{\top} (\mathbf{W}_4\mathbf{x}_j)}
-        {\sqrt{d}} \right)
+class PositionwiseFeedForward(torch.nn.Module):
 
-    Args:
-        in_channels (int or tuple): Size of each input sample. A tuple
-            corresponds to the sizes of source and target dimensionalities.
-        out_channels (int): Size of each output sample.
-        heads (int, optional): Number of multi-head-attentions.
-            (default: :obj:`1`)
-        concat (bool, optional): If set to :obj:`False`, the multi-head
-            attentions are averaged instead of concatenated.
-            (default: :obj:`True`)
-        beta (float, optional): If set, will combine aggregation and
-            skip information via :math:`\beta\,\mathbf{W}_1 \vec{x}_i + (1 -
-            \beta) \left(\sum_{j \in \mathcal{N}(i)} \alpha_{i,j} \mathbf{W}_2
-            \vec{x}_j \right)`. (default: :obj:`None`)
-        dropout (float, optional): Dropout probability of the normalized
-            attention coefficients which exposes each node to a stochastically
-            sampled neighborhood during training. (default: :obj:`0`)
-        edge_dim (int, optional): Edge feature dimensionality (in case
-            there are any). (default :obj:`None`)
-        bias (bool, optional): If set to :obj:`False`, the layer will not learn
-            an additive bias. (default: :obj:`True`)
-        **kwargs (optional): Additional arguments of
-            :class:`torch_geometric.nn.conv.MessagePassing`.
-    """
-    _alpha: OptTensor
+    def __init__(self, d_in, d_hid, dropout=0.1):
+        super().__init__()
+        self.w_1 = Linear(d_in, d_hid)  # position-wise
+        self.w_2 = Linear(d_hid, d_in)  # position-wise
+        self.layer_norm = LayerNorm(d_in)
+        self.dropout = Dropout(dropout)
 
-    def __init__(self, in_channels: Union[int, Tuple[int, int]],
-                 out_channels: int, heads: int = 1, concat: bool = True,
-                 beta: Optional[float] = None, dropout: float = 0.,
-                 edge_dim: Optional[int] = None, bias: bool = True, **kwargs):
-        kwargs.setdefault('aggr', 'add')
-        super(TransformerConv, self).__init__(node_dim=0, **kwargs)
+    def forward(self, x):
 
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.heads = heads
-        self.concat = concat
-        self.beta = beta
-        self.dropout = dropout
-        self.edge_dim = edge_dim
+        residual = x
 
-        if isinstance(in_channels, int):
-            in_channels = (in_channels, in_channels)
+        x = self.w_2(relu(self.w_1(x)))
+        x = self.dropout(x)
+        x += residual
 
-        self.lin_key = Linear(in_channels[0], heads * out_channels)
-        self.lin_query = Linear(in_channels[1], heads * out_channels)
-        self.lin_value = Linear(in_channels[0], heads * out_channels)
-        if edge_dim is not None:
-            self.lin_edge = Linear(edge_dim, heads * out_channels, bias=False)
-        else:
-            self.lin_edge = Linear(1, 1)
+        x = self.layer_norm(x)
 
-        if concat:
-            self.lin_skip = Linear(in_channels[1], heads * out_channels,
-                                   bias=bias)
-        else:
-            self.lin_skip = Linear(in_channels[1], out_channels, bias=bias)
+        return x
 
-        self.reset_parameters()
 
-    def reset_parameters(self):
-        self.lin_key.reset_parameters()
-        self.lin_query.reset_parameters()
-        self.lin_value.reset_parameters()
-        if self.edge_dim:
-            self.lin_edge.reset_parameters()
-        self.lin_skip.reset_parameters()
+class ScaledDotProductWithEdgeAttention(torch.nn.Module):
+    def __init__(self, k_dim, temperature, dropout=0.1):
+        super().__init__()
+        self.k_dim = k_dim
+        self.temperature = temperature
+        self.dropout = torch.nn.Dropout(dropout)
 
-    def forward(self, x: Union[Tensor, PairTensor], edge_index: Adj,
-                edge_attr: OptTensor = None):
 
-        if isinstance(x, Tensor):
-            x: PairTensor = (x, x)
+    def forward(self, q, k, v, mask=None):
+        # q:  b x nh x nn x nn x dv
+        # k:  b x nh x nn x nn x dv
 
-        # propagate_type: (x: PairTensor, edge_attr: OptTensor)
-        out = self.propagate(edge_index, x=x, edge_attr=edge_attr, size=None)
+        # k.T:  b x nh x nn x dv x nn
+        # q x k.T --> b x nh x nn x nn x nn
 
-        if self.concat:
-            out = out.view(-1, self.heads * self.out_channels)
-        else:
-            out = out.mean(dim=1)
+        attn = torch.matmul(q, k.transpose(3, 4))
+        attn = attn / self.temperature
 
-        x = self.lin_skip(x[1])
-        if self.beta is not None:
-            out = self.beta * x + (1 - self.beta) * out
-        else:
-            out += x
+        # attn: b x nh x nn x nn
+        if mask is not None:
+            attn = attn.masked_fill(mask == 0, -1e9)
 
-        return out
+        attn = softmax(attn, dim=-1)
+        attn = self.dropout(attn)
+        output = torch.matmul(attn, v)  # output: b x nh x nn x nn x dv
 
-    def message(self, x_i: Tensor, x_j: Tensor, edge_attr: Optional[Tensor],
-                index: Tensor, ptr: OptTensor,
-                size_i: Optional[int]) -> Tensor:
+        return output
 
-        query = self.lin_key(x_j).view(-1, self.heads, self.out_channels)
-        key = self.lin_query(x_i).view(-1, self.heads, self.out_channels)
 
-        lin_edge = self.lin_edge
-        if edge_attr is not None:
-            edge_attr = lin_edge(edge_attr).view(-1, self.heads,
-                                                 self.out_channels)
-            key += edge_attr
+# TODO: add layer norm before attenion?
+class SelfAttention(torch.nn.Module):
+    def __init__(self, n_head, hidden_dim, k_dim, v_dim, dropout=0.1):
+        super().__init__()
 
-        alpha = (query * key).sum(dim=-1) / math.sqrt(self.out_channels)
-        alpha = softmax(alpha, index, ptr, size_i)
-        alpha = F.dropout(alpha, p=self.dropout, training=self.training)
+        self.n_head = n_head
+        self.q_dim = k_dim
+        self.k_dim = k_dim
+        self.v_dim = v_dim
+        self.hidden_dim = hidden_dim
 
-        out = self.lin_value(x_j).view(-1, self.heads, self.out_channels)
-        if edge_attr is not None:
-            out += edge_attr
+        self.w_qs = Linear(hidden_dim, n_head * self.q_dim, bias=False)
+        self.w_ks = Linear(hidden_dim, n_head * self.k_dim, bias=False)
+        self.w_vs = Linear(hidden_dim, n_head * v_dim, bias=False)
+        self.fc = Linear(n_head * v_dim, hidden_dim, bias=False)
+        self.attention = ScaledDotProductWithEdgeAttention(
+            k_dim=k_dim,
+            temperature=k_dim ** 0.5
+        )
+        self.dropout = Dropout(dropout)
+        self.layer_norm = LayerNorm(hidden_dim)
 
-        out *= alpha.view(-1, self.heads, 1)
-        return out
+    def forward(self, x, mask):
+        # x: b x nn x nn x dv
 
-    def __repr__(self):
-        return '{}({}, {}, heads={})'.format(self.__class__.__name__,
-                                             self.in_channels,
-                                             self.out_channels, self.heads)
+        batch_size, num_nodes = x.size(0), x.size(1)
+        device = x.device
+
+        residual = x
+
+        # Pass through the pre-attention projection: b x lx x (n*dv)
+        # Separate different heads: b x nn x nn x nh x dv
+        x = x[mask]
+        q = torch.empty((batch_size, num_nodes, num_nodes, self.n_head, self.q_dim), device=device)
+        k = torch.empty((batch_size, num_nodes, num_nodes, self.n_head, self.k_dim), device=device)
+        v = torch.empty((batch_size, num_nodes, num_nodes, self.n_head, self.v_dim), device=device)
+        q.masked_scatter_(mask[:, :, :, None, None], self.w_qs(x))
+        k.masked_scatter_(mask[:, :, :, None, None], self.w_ks(x))
+        v.masked_scatter_(mask[:, :, :, None, None], self.w_vs(x))
+
+        # Transpose for attention dot product: b x nh x lx x dv ; k edge features are flip for block attention
+        q, k, v = q.permute(0, 3, 1, 2, 4), k.permute(0, 3, 2, 1, 4), v.permute(0, 3, 1, 2, 4)
+
+        attn_mask = mask.masked_fill(torch.eye(num_nodes, num_nodes, device=device).bool(), 0)
+        attn_mask = attn_mask.unsqueeze(1).expand(-1, num_nodes, -1, -1)
+        attn_mask = attn_mask * (torch.eye(
+            num_nodes, num_nodes, device=device) == 0).bool().unsqueeze(0).unsqueeze(-2).expand(-1, -1, num_nodes, -1)
+
+        x = self.attention(q, k, v, mask=attn_mask.unsqueeze(1))  # unsqueeze For head axs broadcasting
+        #x = self.attention(q, k, v, mask=attn_mask)
+
+        # Transpose to move the head dimension back: b x nn x nn x nh x dv
+        # Combine the last two dimensions to concatenate all the heads together: b x nn x nn x (nh*dv)
+        x = x.permute(0, 3, 1, 2, 4).contiguous().view(batch_size, num_nodes, num_nodes, -1)
+        x_out = torch.empty((batch_size, num_nodes, num_nodes, self.hidden_dim), device=device)
+        x_out.masked_scatter_(mask.unsqueeze(-1), self.dropout(self.fc(x[mask])))
+        x_out += residual
+        x_out = self.layer_norm(x_out)
+
+        return x_out
+
+
+class PositionalEncoding(torch.nn.Module):
+
+    def __init__(self, d_hid, n_position=200):
+        super(PositionalEncoding, self).__init__()
+
+        # Not a parameter
+        self.register_buffer('pos_table', self._get_sinusoid_encoding_table(n_position, d_hid))
+
+    def _get_sinusoid_encoding_table(self, n_position, d_hid):
+        ''' Sinusoid position encoding table '''
+        # TODO: make it with torch instead of numpy
+
+        def get_position_angle_vec(position):
+            return [position / np.power(10000, 2 * (hid_j // 2) / d_hid) for hid_j in range(d_hid)]
+
+        sinusoid_table = np.array([get_position_angle_vec(pos_i) for pos_i in range(n_position)])
+        sinusoid_table[:, 0::2] = np.sin(sinusoid_table[:, 0::2])  # dim 2i
+        sinusoid_table[:, 1::2] = np.cos(sinusoid_table[:, 1::2])  # dim 2i+1
+
+        return torch.FloatTensor(sinusoid_table).unsqueeze(0)
+
+    def forward(self, batch_size, num_nodes):
+        x = self.pos_table[:, :num_nodes].clone().detach()
+        x = x.expand(batch_size, -1, -1)
+        return x
