@@ -22,7 +22,7 @@ def add_arguments(parser):
     parser.add_argument("--num_samples_per_epoch_inc", default=2000000, type=int)
     parser.add_argument("--eval_freq", default=1000, type=int)
     parser.add_argument("-s", "--save_dir", default=DEFAULT_SAVE_DIR, type=str)
-    parser.add_argument("--precision", default=32, type=int)
+    parser.add_argument("--precision", default=16, type=int)
     parser.add_argument('--progress_bar', dest='progress_bar', action='store_true')
     parser.set_defaults(test=False)
     parser.set_defaults(progress_bar=False)
@@ -51,30 +51,29 @@ def add_arguments(parser):
     parser.add_argument("--batch_norm", dest='batch_norm', action='store_true')
     parser.set_defaults(batch_norm=False)
 
-    parser.add_argument("--nonlin", default="lrelu", type=str)
+    parser.add_argument("--nonlin", default="relu", type=str)
 
     # GRAPH ENCODER
-    parser.add_argument("--node_dim", default=256, type=int)
-    parser.add_argument("--graph_encoder_hidden_dim", default=1024, type=int)
-    parser.add_argument("--graph_encoder_num_layers", default=2, type=int)
+    parser.add_argument("--graph_encoder_hidden_dim", default=256, type=int)
+    parser.add_argument("--graph_encoder_k_dim", default=64, type=int)
+    parser.add_argument("--graph_encoder_v_dim", default=64, type=int)
+    parser.add_argument("--graph_encoder_num_heads", default=32, type=int)
+    parser.add_argument("--graph_encoder_ppf_hidden_dim", default=1024, type=int)
+    parser.add_argument("--graph_encoder_num_layers", default=12, type=int)
 
     # GRAPH DECODER
 
-    parser.add_argument("--node_emb_decoder_hidden_dim", default=1024, type=int)
-    parser.add_argument("--node_emb_decoder_num_layers", default=2, type=int)
+    parser.add_argument("--graph_decoder_hidden_dim", default=256, type=int)
+    parser.add_argument("--graph_decoder_k_dim", default=64, type=int)
+    parser.add_argument("--graph_decoder_v_dim", default=64, type=int)
+    parser.add_argument("--graph_decoder_num_heads", default=32, type=int)
+    parser.add_argument("--graph_decoder_ppf_hidden_dim", default=1024, type=int)
+    parser.add_argument("--graph_decoder_num_layers", default=12, type=int)
+    parser.add_argument("--graph_decoder_pos_emb_dim", default=64, type=int)
 
-    parser.add_argument("--edge_decoder_hidden_dim", default=1024, type=int)
-    parser.add_argument("--edge_decoder_num_layers", default=3, type=int)
-
-    parser.add_argument("--node_decoder_hidden_dim", default=1024, type=int)
-    parser.add_argument("--node_decoder_num_layers", default=3, type=int)
-
-    parser.add_argument("--postprocess_method", default=0, type=int)
-    parser.add_argument("--postprocess_temp", default=1.0, type=float)
 
     # PROPERTY PREDICTOR
-    parser.add_argument("--property_predictor_hidden_dim", default=128, type=int)
-    parser.add_argument("--property_predictor_num_layers", default=3, type=int)
+    parser.add_argument("--property_predictor_hidden_dim", default=1024, type=int)
     parser.add_argument("--num_properties", default=8, type=int)
 
     # PI ENCODER

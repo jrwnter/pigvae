@@ -11,17 +11,17 @@ class GraphEncoder(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
         self.posiotional_embedding = PositionalEncoding(32)
-        self.graph_transformer = self.encoder = Transformer(
-            hidden_dim=256,
-            k_dim=64,
-            v_dim=64,
-            num_heads=14,
-            ppf_hidden_dim=1024,
-            num_layers=12 #12
+        self.graph_transformer = Transformer(
+            hidden_dim=hparams["graph_encoder_hidden_dim"],
+            k_dim=hparams["graph_encoder_k_dim"],
+            v_dim=hparams["graph_encoder_v_dim"],
+            num_heads=hparams["graph_encoder_num_heads"],
+            ppf_hidden_dim=hparams["graph_encoder_ppf_hidden_dim"],
+            num_layers=hparams["graph_encoder_num_layers"],
         )
         # 11 edge features (including empty edge) and 26 node features + emb node feature and emb node edge
-        self.fc_in = Linear(2 * (26 + 1) + 11 + 1, 256)
-        self.layer_norm = LayerNorm(256)
+        self.fc_in = Linear(2 * (26 + 1) + 11 + 1, hparams["graph_encoder_hidden_dim"])
+        self.layer_norm = LayerNorm(hparams["graph_encoder_hidden_dim"])
         self.dropout = Dropout(0.1)
 
     def add_emb_node_and_feature(self, node_features, edge_features, mask):
@@ -61,20 +61,21 @@ class GraphEncoder(torch.nn.Module):
 class GraphDecoder(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
-        self.posiotional_embedding = PositionalEncoding(64)
-        self.graph_transformer = self.encoder = Transformer(
-            hidden_dim=256,
-            k_dim=64,
-            v_dim=64,
-            num_heads=14,
-            ppf_hidden_dim=1024,
-            num_layers=12
+        self.posiotional_embedding = PositionalEncoding(hparams["graph_decoder_pos_emb_dim"])
+        self.graph_transformer = Transformer(
+            hidden_dim=hparams["graph_decoder_hidden_dim"],
+            k_dim=hparams["graph_decoder_k_dim"],
+            v_dim=hparams["graph_decoder_v_dim"],
+            num_heads=hparams["graph_decoder_num_heads"],
+            ppf_hidden_dim=hparams["graph_decoder_ppf_hidden_dim"],
+            num_layers=hparams["graph_decoder_num_layers"],
         )
-        self.fc_in = Linear(256 + 2 * 64, 256)
-        self.node_fc_out = Linear(256, 20)
-        self.edge_fc_out = Linear(256, 5)
+        self.fc_in = Linear(hparams["graph_decoder_hidden_dim"] + 2 * hparams["graph_decoder_pos_emb_dim"],
+                            hparams["graph_decoder_hidden_dim"])
+        self.node_fc_out = Linear(hparams["graph_decoder_hidden_dim"], 20)
+        self.edge_fc_out = Linear(hparams["graph_decoder_hidden_dim"], 5)
         self.dropout = Dropout(0.1)
-        self.layer_norm = LayerNorm(256)
+        self.layer_norm = LayerNorm(hparams["graph_decoder_hidden_dim"])
 
     def forward(self, graph_emb, perm, mask):
         batch_size, num_nodes = mask.size(0), mask.size(1)
@@ -109,7 +110,7 @@ class Permuter(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
         self.permuter = permuter.Permuter(
-            input_dim=256,
+            input_dim=hparams["graph_decoder_hidden_dim"],
         )
 
     def forward(self, node_features, mask, hard=False, tau=1.0):
@@ -152,13 +153,12 @@ class GraphAE(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
         self.encoder = GraphEncoder(hparams)
-        self.bottle_neck_encoder = BottleNeckEncoder(256, 128)
-        self.bottle_neck_decoder = BottleNeckDecoder(128, 256)
-        self.property_predictor = PropertyPredictor(128, 1024, hparams["num_properties"])
+        self.bottle_neck_encoder = BottleNeckEncoder(hparams["graph_encoder_hidden_dim"], hparams["emb_dim"])
+        self.bottle_neck_decoder = BottleNeckDecoder(hparams["emb_dim"], hparams["graph_decoder_hidden_dim"])
+        self.property_predictor = PropertyPredictor(hparams["emb_dim"], hparams["property_predictor_hidden_dim"],
+                                                    hparams["num_properties"])
         self.permuter = Permuter(hparams)
         self.decoder = GraphDecoder(hparams)
-        self.node_dim = hparams["node_dim"]
-        self.num_nodes = hparams["max_num_nodes"]
 
     def encode(self, graph):
         node_features = graph.node_features

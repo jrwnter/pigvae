@@ -70,7 +70,7 @@ class ScaledDotProductWithEdgeAttention(torch.nn.Module):
 
         # attn: b x nh x nn x nn
         if mask is not None:
-            attn = attn.masked_fill(mask == 0, -1e9)
+            attn = attn.masked_fill(mask == 0, -2**15)
 
         attn = softmax(attn, dim=-1)
         attn = self.dropout(attn)
@@ -111,13 +111,16 @@ class SelfAttention(torch.nn.Module):
 
         # Pass through the pre-attention projection: b x lx x (n*dv)
         # Separate different heads: b x nn x nn x nh x dv
-        x = x[mask]
-        q = torch.empty((batch_size, num_nodes, num_nodes, self.n_head, self.q_dim), device=device)
-        k = torch.empty((batch_size, num_nodes, num_nodes, self.n_head, self.k_dim), device=device)
-        v = torch.empty((batch_size, num_nodes, num_nodes, self.n_head, self.v_dim), device=device)
-        q.masked_scatter_(mask[:, :, :, None, None], self.w_qs(x))
-        k.masked_scatter_(mask[:, :, :, None, None], self.w_ks(x))
-        v.masked_scatter_(mask[:, :, :, None, None], self.w_vs(x))
+        #x = x[mask]
+        #q = torch.empty((batch_size, num_nodes, num_nodes, self.n_head, self.q_dim), device=device, dtype=torch.half)
+        #k = torch.empty((batch_size, num_nodes, num_nodes, self.n_head, self.k_dim), device=device, dtype=torch.half)
+        #v = torch.empty((batch_size, num_nodes, num_nodes, self.n_head, self.v_dim), device=device, dtype=torch.half)
+        #q.masked_scatter_(mask[:, :, :, None, None], self.w_qs(x))
+        #k.masked_scatter_(mask[:, :, :, None, None], self.w_ks(x))
+        #v.masked_scatter_(mask[:, :, :, None, None], self.w_vs(x))
+        q = self.w_qs(x).view(batch_size, num_nodes, num_nodes, self.n_head, self.q_dim)
+        k = self.w_ks(x).view(batch_size, num_nodes, num_nodes, self.n_head, self.k_dim)
+        v = self.w_vs(x).view(batch_size, num_nodes, num_nodes, self.n_head, self.v_dim)
 
         # Transpose for attention dot product: b x nh x lx x dv ; k edge features are flip for block attention
         q, k, v = q.permute(0, 3, 1, 2, 4), k.permute(0, 3, 2, 1, 4), v.permute(0, 3, 1, 2, 4)
@@ -133,12 +136,13 @@ class SelfAttention(torch.nn.Module):
         # Transpose to move the head dimension back: b x nn x nn x nh x dv
         # Combine the last two dimensions to concatenate all the heads together: b x nn x nn x (nh*dv)
         x = x.permute(0, 3, 1, 2, 4).contiguous().view(batch_size, num_nodes, num_nodes, -1)
-        x_out = torch.empty((batch_size, num_nodes, num_nodes, self.hidden_dim), device=device)
-        x_out.masked_scatter_(mask.unsqueeze(-1), self.dropout(self.fc(x[mask])))
-        x_out += residual
-        x_out = self.layer_norm(x_out)
+        #x_out = torch.empty((batch_size, num_nodes, num_nodes, self.hidden_dim), device=device, dtype=torch.half)
+        #x_out.masked_scatter_(mask.unsqueeze(-1), self.dropout(self.fc(x[mask])))
+        x = self.dropout(self.fc(x))
+        x += residual
+        x = self.layer_norm(x)
 
-        return x_out
+        return x
 
 
 class PositionalEncoding(torch.nn.Module):

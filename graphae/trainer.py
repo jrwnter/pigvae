@@ -1,8 +1,6 @@
 import pytorch_lightning as pl
 from graphae.graph_ae import GraphAE
 from graphae.metrics import *
-from pivae.vae import PIVAE
-from graphae.side_tasks import PropertyPredictor
 
 
 class PLGraphAE(pl.LightningModule):
@@ -69,8 +67,8 @@ class PLGraphAE(pl.LightningModule):
         lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
             factor=0.5,
-            patience=5,
-            cooldown=25,
+            patience=20,
+            cooldown=50,
             min_lr=1e-6,
         )
         scheduler = {
