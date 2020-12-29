@@ -156,7 +156,7 @@ class GraphAE(torch.nn.Module):
         self.bottle_neck_encoder = BottleNeckEncoder(hparams["graph_encoder_hidden_dim"], hparams["emb_dim"])
         self.bottle_neck_decoder = BottleNeckDecoder(hparams["emb_dim"], hparams["graph_decoder_hidden_dim"])
         self.property_predictor = PropertyPredictor(hparams["emb_dim"], hparams["property_predictor_hidden_dim"],
-                                                    hparams["num_properties"])
+                                                    hparams["num_properties"] + 1)
         self.permuter = Permuter(hparams)
         self.decoder = GraphDecoder(hparams)
 

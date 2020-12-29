@@ -56,12 +56,12 @@ class Critic(torch.nn.Module):
         perm_loss = self.perm_loss(perm)
         property_loss = self.property_loss(
             input=graph_true.molecular_properties,
-            target=graph_pred.molecular_properties,
+            target=graph_pred.molecular_properties[:, :-1],  # fine tune property
         )
         kld_loss = self.kld_loss(mu, logvar)
         loss = {**recon_loss, "perm_loss": perm_loss, "property_loss": property_loss, "kld_loss": kld_loss}
         #loss = {**recon_loss, "perm_loss": perm_loss}
-        loss["loss"] = loss["loss"] + 0.05 * perm_loss + 0.01 * property_loss + 0.001 * kld_loss
+        loss["loss"] = loss["loss"] + 0.05 * perm_loss + 0.01 * property_loss + 0.0001 * kld_loss
         #loss = recon_loss
         return loss
 
