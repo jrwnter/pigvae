@@ -20,6 +20,8 @@ BOND_LIST = [Chem.rdchem.BondType.SINGLE, Chem.rdchem.BondType.DOUBLE,
              Chem.rdchem.BondType.TRIPLE, Chem.rdchem.BondType.AROMATIC]
 HS_LIST = [0, 1, 2, 3]
 NUM_ELEMENTS = len(ELEM_LIST)
+NUM_CHARGES = len(CHARGE_LIST)
+NUM_HS = len(HS_LIST)
 NUM_ATOMS_MEAN = 23.101
 NUM_ATOMS_STD = 6.652
 
@@ -275,32 +277,33 @@ def one_hot_bond_features(bond):
     return bond_feat
 
 
-def rdkit_mol_from_graph(graph):
-    graph = graph.to("cpu")
-    num_atoms = len(graph.x)
-    atom_type = torch.where(graph.x[:, :NUM_ELEMENTS] == 1)[1].tolist()
+def rdkit_mol_from_graph(node_features, edge_features):
+    num_atoms = len(node_features)
+    atom_type = torch.where(node_features[:, :NUM_ELEMENTS] == 1)[1].tolist()
     atom_type = [ELEM_LIST[idx] for idx in atom_type]
-    charge = torch.where(graph.x[:, NUM_ELEMENTS:NUM_ELEMENTS + 5] == 1)[1].tolist()
+    charge = torch.where(node_features[:, NUM_ELEMENTS:NUM_ELEMENTS + NUM_CHARGES] == 1)[1].tolist()
     charge = [CHARGE_LIST[idx] for idx in charge]
-    #hybridization = torch.where(graph.x[:, NUM_ELEMENTS + 5: NUM_ELEMENTS + 5 + 7] == 1)[1].tolist()
-    #hybridization = [HYBRIDIZATION_TYPE_LIST[idx] for idx in hybridization]
-    num_hs = torch.where(graph.x[:, NUM_ELEMENTS + 5: NUM_ELEMENTS + 5 + 4] == 1)[1].tolist()
+    num_hs = torch.where(node_features[:, NUM_ELEMENTS + NUM_CHARGES: NUM_ELEMENTS + NUM_CHARGES + NUM_HS] == 1)[1].tolist()
     num_hs = [HS_LIST[idx] for idx in num_hs]
-    #is_aromatic = graph.x[:, -1].bool().tolist()
     bonds = {}
-    bond_type = torch.where(graph.edge_attr[:, :4] == 1)[1].tolist()
-    for i in range(graph.edge_index.shape[1]):
-        edge_idx = tuple(graph.edge_index[:, i].tolist())
-        edge_idx_reversed = (edge_idx[1], edge_idx[0])
-        if (edge_idx not in bonds) & (edge_idx_reversed not in bonds):
-            bonds[edge_idx] = BOND_LIST[bond_type[i]]
+    edge_index = []
+    edge_attr = []
+    for j in range(1, 5):
+        idx1, idx2 = torch.where(edge_features[:, :, j] == 1)
+        edge_index.append(torch.stack((idx1, idx2), dim=1))
+        edge_attr.append(torch.Tensor(len(idx1) * [j - 1]))
+    edge_index = torch.cat(edge_index, dim=0).numpy()
+    edge_attr = torch.cat(edge_attr).numpy()
+    for i in range(len(edge_index)):
+        edge = tuple(edge_index[i])
+        edge_reversed = (edge[1], edge[0])
+        if edge_reversed not in bonds:
+            bonds[(int(edge[0]), int(edge[1]))] = BOND_LIST[int(edge_attr[i])]
     mol = Chem.RWMol()
     for i in range(num_atoms):
         atom = Chem.Atom(atom_type[i])
-        #atom.SetIsAromatic(is_aromatic[i])
         atom.SetFormalCharge(charge[i])
         atom.SetNumExplicitHs(num_hs[i])
-        #atom.SetHybridization(hybridization[i])
         mol.AddAtom(atom)
     for bond, bond_type in bonds.items():
         mol.AddBond(bond[0], bond[1], bond_type)

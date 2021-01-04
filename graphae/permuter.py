@@ -6,25 +6,12 @@ from graphae.fully_connected import FNN
 class Permuter(torch.nn.Module):
     def __init__(self, input_dim):
         super().__init__()
-        """self.scoring_fnn = FNN(
-            input_dim=input_dim,
-            hidden_dim=hidden_dim,
-            output_dim=1,
-            num_layers=num_layers,
-            non_linearity=non_linearity,
-            batch_norm=batch_norm,
-            dropout=0.1,
-            flatten_for_batch_norm=True
-        )"""
         self.scoring_fc = Linear(input_dim, 1)
         self.soft_sort = SoftSort()
 
     def forward(self, x, mask, hard=False, tau=1.0):
         # x [batch_size, element_dim]
-        #print(torch.where(torch.isnan(x)))
         scores = self.scoring_fc(x)
-        #print(torch.where(torch.isnan(scores)))
-
         fill_value = scores.min().item() - 1
         scores = scores.masked_fill(mask.unsqueeze(-1) == 0, fill_value)
         perm = self.soft_sort(scores.squeeze(), hard=hard, tau=tau)  # [batch_size, max_len, max_len]
