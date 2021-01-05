@@ -9,8 +9,8 @@ ELEMENT_TYPE_WEIGHTS = torch.Tensor([
     1.1111e-04, 6.9739e-04, 7.9399e-04, 4.8409e-03, 5.1567e-03, 2.6155e-01,
     2.7761e-01, 8.4134e-03, 1.8924e-02, 1.4429e-01, 2.7761e-01])
 CHARGE_TYPE_WEIGHTS = torch.Tensor([0.2596, 0.2596, 0.2205, 0.2596, 0.0006])
-#EDGE_WEIGHTS = torch.Tensor([5.4339e-03, 4.5212e-02, 9.4218e-01, 6.8846e-03, 2.8955e-04])
-EDGE_WEIGHTS = torch.Tensor([1, 2, 10, 100, 2])
+EDGE_WEIGHTS = torch.Tensor([2.8955e-04, 5.4339e-03, 4.5212e-02, 9.4218e-01, 6.8846e-03])
+#EDGE_WEIGHTS = torch.Tensor([1, 2, 10, 100, 2])
 
 # 16
 
