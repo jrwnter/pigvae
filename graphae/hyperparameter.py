@@ -54,6 +54,7 @@ def add_arguments(parser):
     parser.add_argument("--nonlin", default="relu", type=str)
 
     # GRAPH ENCODER
+    parser.add_argument("--emb_dim", default=128, type=int)
     parser.add_argument("--graph_encoder_hidden_dim", default=512, type=int)
     parser.add_argument("--graph_encoder_k_dim", default=64, type=int)
     parser.add_argument("--graph_encoder_v_dim", default=64, type=int)
