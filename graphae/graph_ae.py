@@ -77,11 +77,13 @@ class GraphDecoder(torch.nn.Module):
         self.dropout = Dropout(0.1)
         self.layer_norm = LayerNorm(hparams["graph_decoder_hidden_dim"])
 
-    def forward(self, graph_emb, mask):
+    def forward(self, graph_emb, perm, mask):
         batch_size, num_nodes = mask.size(0), mask.size(1)
         edge_mask = mask.unsqueeze(1) * mask.unsqueeze(2)
 
         pos_emb = self.posiotional_embedding(batch_size, num_nodes)
+        if perm is not None:
+            pos_emb = torch.matmul(perm, pos_emb)
         pos_emb_combined = torch.cat(
             (pos_emb.unsqueeze(2).repeat(1, 1, num_nodes, 1),
              pos_emb.unsqueeze(1).repeat_interleave(num_nodes, dim=1)),
@@ -120,24 +122,6 @@ class Permuter(torch.nn.Module):
         perm = torch.where(mask, perm, eye)
         return perm
 
-    @staticmethod
-    def permute_node_features(node_features, perm):
-        node_features = torch.matmul(perm, node_features)
-        return node_features
-
-    @staticmethod
-    def permute_edge_features(edge_features, perm):
-        edge_features = torch.matmul(perm.unsqueeze(1), edge_features)
-        edge_features = torch.matmul(perm.unsqueeze(1), edge_features.permute(0, 2, 1, 3))
-        edge_features = edge_features.permute(0, 2, 1, 3)
-        return edge_features
-
-    @staticmethod
-    def permute_graph(graph, perm):
-        graph.node_features = Permuter.permute_node_features(graph.node_features, perm)
-        graph.edge_features = Permuter.permute_edge_features(graph.edge_features, perm)
-        return graph
-
 
 class BottleNeckEncoder(torch.nn.Module):
     def __init__(self, d_in, d_out):
@@ -164,7 +148,6 @@ class BottleNeckDecoder(torch.nn.Module):
         x = self.w(x)
         return x
 
-
 # TODO: get attn mask for encoder and decoder together
 class GraphAE(torch.nn.Module):
     def __init__(self, hparams):
@@ -190,11 +173,12 @@ class GraphAE(torch.nn.Module):
         graph_emb, mu, logvar = self.bottle_neck_encoder(graph_emb)
         return graph_emb, node_features, mu, logvar
 
-    def decode(self, graph_emb, mask):
+    def decode(self, graph_emb, perm, mask):
         properties = self.property_predictor(graph_emb)
         graph_emb = self.bottle_neck_decoder(graph_emb)
         node_logits, edge_logits = self.decoder(
             graph_emb=graph_emb,
+            perm=perm,
             mask=mask
         )
         graph_pred = DenseGraphBatch(
@@ -208,8 +192,7 @@ class GraphAE(torch.nn.Module):
     def forward(self, graph, training, tau):
         graph_emb, node_features, mu, logvar = self.encode(graph=graph)
         perm = self.permuter(node_features, mask=graph.mask, hard=not training, tau=tau)
-        graph_pred = self.decode(graph_emb, graph.mask)
-        graph_pred = self.permuter.permute_graph(graph_pred, perm)
+        graph_pred = self.decode(graph_emb, perm, graph.mask)
         return graph_pred, perm, mu, logvar
 
     @staticmethod
@@ -231,4 +214,3 @@ class GraphAE(torch.nn.Module):
         graph.node_features = nodes
         graph.edge_features = edges
         return graph
-
