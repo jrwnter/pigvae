@@ -122,6 +122,24 @@ class Permuter(torch.nn.Module):
         perm = torch.where(mask, perm, eye)
         return perm
 
+    @staticmethod
+    def permute_node_features(node_features, perm):
+        node_features = torch.matmul(perm, node_features)
+        return node_features
+
+    @staticmethod
+    def permute_edge_features(edge_features, perm):
+        edge_features = torch.matmul(perm.unsqueeze(1), edge_features)
+        edge_features = torch.matmul(perm.unsqueeze(1), edge_features.permute(0, 2, 1, 3))
+        edge_features = edge_features.permute(0, 2, 1, 3)
+        return edge_features
+
+    @staticmethod
+    def permute_graph(graph, perm):
+        graph.node_features = Permuter.permute_node_features(graph.node_features, perm)
+        graph.edge_features = Permuter.permute_edge_features(graph.edge_features, perm)
+        return graph
+
 
 class BottleNeckEncoder(torch.nn.Module):
     def __init__(self, d_in, d_out):
