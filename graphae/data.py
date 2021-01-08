@@ -10,7 +10,7 @@ from torch_geometric.data import Data
 from torch_geometric.transforms import ToDense
 from torch_geometric.utils import to_dense_batch, to_dense_adj
 import networkx as nx
-from networkx.generators.random_graphs import binomial_graph
+from networkx.generators.random_graphs import binomial_graph, erdos_renyi_graph
 from networkx.algorithms.shortest_paths.dense import floyd_warshall_numpy
 from networkx.linalg.graphmatrix import adjacency_matrix
 
@@ -47,10 +47,16 @@ class BinominalGraphDataset(Dataset):
     def __len__(self):
         return self.samples_per_epoch
 
+    def get_largest_subgraph(self, g):
+        g = g.subgraph(sorted(nx.connected_components(g), key=len, reverse=True)[0])
+        g = nx.convert_node_labels_to_integers(g, first_label=0)
+        return g
+
     def __getitem__(self, idx):
         n = int(np.minimum(self.n_mean + np.random.randn() * self.n_std, self.n_max))
         p = np.maximum(np.minimum(self.p_mean + np.random.randn() * self.p_std, 1), 0)
         g = binomial_graph(n, p)
+        g = self.get_largest_subgraph(g)
         return g
 
 

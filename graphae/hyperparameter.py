@@ -1,6 +1,6 @@
 import os
 DEFAULT_DATA_PATH = "/home/ggwaq/projects/graph_vae/smiles_with_features.csv.gz"
-DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves13")
+DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves16")
 
 
 def add_arguments(parser):
@@ -17,12 +17,12 @@ def add_arguments(parser):
     parser.add_argument('-i', '--id', type=int, default=0)
     parser.add_argument('-g', '--gpus', default=1, type=int)
     parser.add_argument('-e', '--num_epochs', default=5000, type=int)
-    parser.add_argument("--num_eval_samples", default=8192*8, type=int)
+    parser.add_argument("--num_eval_samples", default=8192, type=int)
     parser.add_argument("--num_samples_per_epoch", default=800000000, type=int)
     parser.add_argument("--num_samples_per_epoch_inc", default=2000000, type=int)
     parser.add_argument("--eval_freq", default=1000, type=int)
     parser.add_argument("-s", "--save_dir", default=DEFAULT_SAVE_DIR, type=str)
-    parser.add_argument("--precision", default=16, type=int)
+    parser.add_argument("--precision", default=32, type=int)
     parser.add_argument('--progress_bar', dest='progress_bar', action='store_true')
     parser.set_defaults(test=False)
     parser.set_defaults(progress_bar=False)
@@ -54,22 +54,22 @@ def add_arguments(parser):
     parser.add_argument("--nonlin", default="relu", type=str)
 
     # GRAPH ENCODER
-    parser.add_argument("--emb_dim", default=128, type=int)
-    parser.add_argument("--graph_encoder_hidden_dim", default=512, type=int)
+    parser.add_argument("--emb_dim", default=32, type=int)
+    parser.add_argument("--graph_encoder_hidden_dim", default=128, type=int)
     parser.add_argument("--graph_encoder_k_dim", default=64, type=int)
     parser.add_argument("--graph_encoder_v_dim", default=64, type=int)
-    parser.add_argument("--graph_encoder_num_heads", default=32, type=int)
+    parser.add_argument("--graph_encoder_num_heads", default=8, type=int)
     parser.add_argument("--graph_encoder_ppf_hidden_dim", default=1024, type=int)
-    parser.add_argument("--graph_encoder_num_layers", default=16, type=int)
+    parser.add_argument("--graph_encoder_num_layers", default=8, type=int)
 
     # GRAPH DECODER
 
-    parser.add_argument("--graph_decoder_hidden_dim", default=512, type=int)
+    parser.add_argument("--graph_decoder_hidden_dim", default=128, type=int)
     parser.add_argument("--graph_decoder_k_dim", default=64, type=int)
     parser.add_argument("--graph_decoder_v_dim", default=64, type=int)
-    parser.add_argument("--graph_decoder_num_heads", default=32, type=int)
+    parser.add_argument("--graph_decoder_num_heads", default=8, type=int)
     parser.add_argument("--graph_decoder_ppf_hidden_dim", default=1024, type=int)
-    parser.add_argument("--graph_decoder_num_layers", default=16, type=int)
+    parser.add_argument("--graph_decoder_num_layers", default=8, type=int)
     parser.add_argument("--graph_decoder_pos_emb_dim", default=64, type=int)
 
 
