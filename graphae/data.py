@@ -9,6 +9,10 @@ from rdkit.Chem.rdmolops import GetDistanceMatrix
 from torch_geometric.data import Data
 from torch_geometric.transforms import ToDense
 from torch_geometric.utils import to_dense_batch, to_dense_adj
+import networkx as nx
+from networkx.generators.random_graphs import binomial_graph
+from networkx.algorithms.shortest_paths.dense import floyd_warshall_numpy
+from networkx.linalg.graphmatrix import adjacency_matrix
 
 ELEM_LIST = ['C', 'N', 'O', 'S', 'F', 'Si', 'P', 'Cl', 'Br', 'I', 'H']
 CHARGE_LIST = [-1, -2, 1, 2, 0]
@@ -29,6 +33,27 @@ MEAN_DISTANCE = 4.814012207760507
 STD_DISTANCE = 2.991864705281403
 
 
+class BinominalGraphDataset(Dataset):
+    def __init__(self, n_mean=16, n_std=2, n_max=32, p_mean=0.2, p_std=0.1,
+                 samples_per_epoch=100000):
+        super().__init__()
+        self.n_mean = n_mean
+        self.n_std = n_std
+        self.n_max = n_max
+        self.p_mean = p_mean
+        self.p_std = p_std
+        self.samples_per_epoch = samples_per_epoch
+
+    def __len__(self):
+        return self.samples_per_epoch
+
+    def __getitem__(self, idx):
+        n = int(np.minimum(self.n_mean + np.random.randn() * self.n_std, self.n_max))
+        p = np.maximum(np.minimum(self.p_mean + np.random.randn() * self.p_std, 1), 0)
+        g = binomial_graph(n, p)
+        return g
+
+
 class DenseGraphBatch(Data):
     def __init__(self, node_features, edge_features, mask, **kwargs):
         self.node_features = node_features
@@ -39,37 +64,23 @@ class DenseGraphBatch(Data):
 
     @classmethod
     def from_sparse_graph_list(cls, graph_list):
-        max_num_nodes = max([len(graph.x) for graph in graph_list])
-        x = []
+        max_num_nodes = max([graph.number_of_nodes() for graph in graph_list])
+        node_features = []
+        edge_features = []
         mask = []
-        adj = []
-        other_attr = {key: [] for key in graph_list[0].keys if key not in ['x', 'edge_index', 'edge_attr', 'distance_matrix']}
         for graph in graph_list:
-            x_, mask_ = to_dense_batch(graph.x, max_num_nodes=max_num_nodes)
-            adj_ = to_dense_adj(graph.edge_index, edge_attr=graph.edge_attr, max_num_nodes=max_num_nodes)
-            adj_ = add_empty_edge_type(adj_)
-            dm = torch.ones(max_num_nodes, max_num_nodes) * -100
-            dm[:graph.num_nodes, :graph.num_nodes] = graph.distance_matrix
-            dm = dm.unsqueeze(0).unsqueeze(-1)
-            adj_ = torch.cat((adj_, dm), axis=-1)
-            x.append(x_)
-            mask.append(mask_)
-            adj.append(adj_)
-            for key in other_attr.keys():
-                attr = graph[key]
-                # add batch dim
-                if attr.size(0) != 0:
-                    attr.unsqueeze(0)
-                other_attr[key].append(attr)
-        x = torch.cat(x, dim=0)
+            num_nodes = graph.number_of_nodes()
+            degrees = graph.degree()
+            degrees = [degrees[i] for i in range(num_nodes)] + (max_num_nodes - num_nodes) * [0]
+            node_features.append(torch.Tensor(degrees).unsqueeze(0).unsqueeze(-1))
+            dm = torch.ones(1, max_num_nodes, max_num_nodes, 1) * -100
+            dm[0, :num_nodes, :num_nodes, 0] = torch.from_numpy(floyd_warshall_numpy(graph))
+            edge_features.append(dm)
+            mask.append((torch.arange(max_num_nodes) < num_nodes).unsqueeze(0))
+        node_features = torch.cat(node_features, dim=0)
+        edge_features = torch.cat(edge_features, dim=0)
         mask = torch.cat(mask, dim=0)
-        # set self edges to 0
-        adj = torch.cat(adj, dim=0)
-        self_edge_mask = torch.eye(max_num_nodes, max_num_nodes).bool().unsqueeze(-1)
-        adj.masked_fill_(self_edge_mask, 0)
-        for key in other_attr.keys():
-            other_attr[key] = torch.cat(other_attr[key])
-        return cls(node_features=x, edge_features=adj, mask=mask, **other_attr)
+        return cls(node_features=node_features, edge_features=edge_features, mask=mask)
 
     def __repr__(self):
         repr_list = ["{}={}".format(key, list(value.shape)) for key, value in self.__dict__.items()]
@@ -83,40 +94,35 @@ class DenseGraphDataLoader(torch.utils.data.DataLoader):
 
 
 class MolecularGraphDataModule(pl.LightningDataModule):
-    def __init__(self, data_path, batch_size, max_num_nodes, num_eval_samples, num_samples_per_epoch,
-                 num_samples_per_epoch_inc, num_workers=1, debug=False):
+    def __init__(self, n_mean=16, n_std=2, n_max=32, p_mean=0.2, p_std=0.1,
+                 samples_per_epoch=100000, batch_size=32, num_workers=1, debug=False):
         super().__init__()
-        self.data_path = data_path
-        self.batch_size = batch_size
-        self.max_num_nodes = max_num_nodes
-        self.num_eval_samples = num_eval_samples
-        self.num_samples_per_epoch = num_samples_per_epoch
-        self.num_samples_per_epoch_inc = num_samples_per_epoch_inc
+        self.n_mean = n_mean
+        self.n_std = n_std
+        self.n_max = n_max
+        self.p_mean = p_mean
+        self.p_std = p_std
+        self.samples_per_epoch = samples_per_epoch
         self.num_workers = num_workers
-        self.debug = debug
+        self.batch_size = batch_size
         self.train_dataset = None
         self.eval_dataset = None
         self.train_sampler = None
         self.eval_sampler = None
 
-    def setup(self, stage):
-        num_smiles = 10000000 if self.debug else None
-        smiles_df = pd.read_csv(self.data_path, nrows=num_smiles, compression="gzip")
-        self.train_smiles_df = smiles_df.iloc[self.num_eval_samples:]
-        self.eval_smiles_df = smiles_df.iloc[:self.num_eval_samples]
-
     def train_dataloader(self):
-        print(self.max_num_nodes)
-        smiles_df = self.train_smiles_df[self.train_smiles_df.num_atoms <= self.max_num_nodes]
-        smiles_df = smiles_df.sample(frac=1.0).reset_index(drop=True)
-        smiles_df = smiles_df.iloc[:self.num_samples_per_epoch]
-        train_dataset = MolecularGraphDatasetFromSmilesDataFrame(df=smiles_df)
+        train_dataset = BinominalGraphDataset(
+            n_mean=self.n_mean,
+            n_std=self.n_std,
+            n_max=self.n_max,
+            p_mean=self.p_mean,
+            p_std=self.p_std,
+            samples_per_epoch=self.samples_per_epoch
+        )
         train_sampler = DistributedSampler(
             dataset=train_dataset,
-            shuffle=True
+            shuffle=False
         )
-        #self.max_num_nodes += 2
-        self.num_samples_per_epoch += self.num_samples_per_epoch_inc
         return DenseGraphDataLoader(
             dataset=train_dataset,
             batch_size=self.batch_size,
@@ -126,8 +132,14 @@ class MolecularGraphDataModule(pl.LightningDataModule):
         )
 
     def val_dataloader(self):
-        smiles_df = self.eval_smiles_df[self.eval_smiles_df.num_atoms <= self.max_num_nodes].reset_index(drop=True)
-        eval_dataset = MolecularGraphDatasetFromSmilesDataFrame(df=smiles_df)
+        eval_dataset = BinominalGraphDataset(
+            n_mean=self.n_mean,
+            n_std=self.n_std,
+            n_max=self.n_max,
+            p_mean=self.p_mean,
+            p_std=self.p_std,
+            samples_per_epoch=self.samples_per_epoch
+        )
         eval_sampler = DistributedSampler(
             dataset=eval_dataset,
             shuffle=False

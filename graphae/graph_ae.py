@@ -1,6 +1,6 @@
 import torch
 from torch.nn import Linear, LayerNorm, Dropout
-from torch.nn.functional import relu
+from torch.nn.functional import relu, pad
 from graphae.graph_transformer import Transformer, PositionalEncoding
 from graphae import permuter
 from graphae.data import DenseGraphBatch
@@ -20,7 +20,7 @@ class GraphEncoder(torch.nn.Module):
             num_layers=hparams["graph_encoder_num_layers"],
         )
         # 11 edge features (including empty edge) and 26 node features + emb node feature and emb node edge
-        self.fc_in = Linear(2 * (26 + 1) + 11 + 1, hparams["graph_encoder_hidden_dim"])
+        self.fc_in = Linear(1, hparams["graph_encoder_hidden_dim"])
         self.layer_norm = LayerNorm(hparams["graph_encoder_hidden_dim"])
         self.dropout = Dropout(0.1)
 

@@ -31,12 +31,7 @@ def main(hparams):
     tb_logger = TensorBoardLogger(hparams.save_dir + "/run{}/".format(hparams.id))
     model = PLGraphAE(hparams.__dict__)
     datamodule = MolecularGraphDataModule(
-        data_path=hparams.data_path,
         batch_size=hparams.batch_size,
-        max_num_nodes=hparams.max_num_nodes,
-        num_eval_samples=hparams.num_eval_samples if not hparams.test else 8 * 512,
-        num_samples_per_epoch=hparams.num_samples_per_epoch,
-        num_samples_per_epoch_inc=hparams.num_samples_per_epoch_inc,
         num_workers=hparams.num_workers,
         debug=hparams.test
     )
