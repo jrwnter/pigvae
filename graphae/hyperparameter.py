@@ -77,8 +77,6 @@ def add_arguments(parser):
     parser.add_argument("--property_predictor_hidden_dim", default=1024, type=int)
     parser.add_argument("--num_properties", default=8, type=int)
 
-    # PI ENCODER
-    parser.add_argument("--emb_dim", default=128, type=int)
 
     # DATA
     parser.add_argument("--data_path", default=DEFAULT_DATA_PATH, type=str)

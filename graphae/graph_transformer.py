@@ -115,7 +115,7 @@ class SelfAttention(torch.nn.Module):
         k = self.w_ks(x).view(batch_size, num_nodes, num_nodes, self.n_head, self.k_dim)
         v = self.w_vs(x).view(batch_size, num_nodes, num_nodes, self.n_head, self.v_dim)
 
-        # Transpose for attention dot product: b x nh x lx x dv ; k edge features are flip for block attention
+        # Transpose for attention dot product: b x nh x nn x nn x dv ; k and v edge features flip for block attention
         q, k, v = q.permute(0, 3, 1, 2, 4), k.permute(0, 3, 2, 1, 4), v.permute(0, 3, 2, 1, 4)
         # [bz, nh, nn1, nn2, dq]
 
@@ -124,7 +124,7 @@ class SelfAttention(torch.nn.Module):
         attn_mask = attn_mask * (torch.eye(
             num_nodes, num_nodes, device=device) == 0).bool().unsqueeze(0).unsqueeze(-2).expand(-1, -1, num_nodes, -1)
         x = self.attention(q, k, v, mask=attn_mask.unsqueeze(1))  # unsqueeze For head axs broadcasting
-        x = x.permute(0, 2, 3, 1, 4).contiguous() # [bz, nn1, nn2, nh, dq]
+        x = x.permute(0, 2, 3, 1, 4).contiguous()  # [bz, nn1, nn2, nh, dq]
         x = x.view(batch_size, num_nodes, num_nodes, self.n_head * self.q_dim)
         x = self.dropout(self.fc(x))
         x += residual
