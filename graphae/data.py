@@ -144,7 +144,7 @@ class MolecularGraphDataModule(pl.LightningDataModule):
             n_max=self.n_max,
             p_mean=self.p_mean,
             p_std=self.p_std,
-            samples_per_epoch=self.samples_per_epoch
+            samples_per_epoch=8192
         )
         eval_sampler = DistributedSampler(
             dataset=eval_dataset,

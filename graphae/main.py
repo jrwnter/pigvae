@@ -33,7 +33,8 @@ def main(hparams):
     datamodule = MolecularGraphDataModule(
         batch_size=hparams.batch_size,
         num_workers=hparams.num_workers,
-        debug=hparams.test
+        debug=hparams.test,
+        samples_per_epoch=100000000
     )
     my_ddp_plugin = MyDDP()
     trainer = pl.Trainer(
