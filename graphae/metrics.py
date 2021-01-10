@@ -5,6 +5,9 @@ from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss, L1Loss, MSELoss, Tripl
 from pytorch_lightning.metrics.classification import Recall, Precision, Accuracy
 
 
+MEAN_DISTANCE = 2.0626
+STD_DISTANCE = 1.1746
+
 
 # TODO: make metric for loss. Right now does not sync correctly, I guess?
 class Critic(torch.nn.Module):

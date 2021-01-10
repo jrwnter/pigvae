@@ -14,23 +14,9 @@ from networkx.generators.random_graphs import binomial_graph, erdos_renyi_graph
 from networkx.algorithms.shortest_paths.dense import floyd_warshall_numpy
 from networkx.linalg.graphmatrix import adjacency_matrix
 
-ELEM_LIST = ['C', 'N', 'O', 'S', 'F', 'Si', 'P', 'Cl', 'Br', 'I', 'H']
-CHARGE_LIST = [-1, -2, 1, 2, 0]
-HYBRIDIZATION_TYPE_LIST = [Chem.rdchem.HybridizationType.S, Chem.rdchem.HybridizationType.SP,
-                           Chem.rdchem.HybridizationType.SP2, Chem.rdchem.HybridizationType.SP3,
-                           Chem.rdchem.HybridizationType.SP3D, Chem.rdchem.HybridizationType.SP3D2,
-                           Chem.rdchem.HybridizationType.UNSPECIFIED]
-BOND_LIST = [Chem.rdchem.BondType.SINGLE, Chem.rdchem.BondType.DOUBLE,
-             Chem.rdchem.BondType.TRIPLE, Chem.rdchem.BondType.AROMATIC]
-HS_LIST = [0, 1, 2, 3]
-NUM_ELEMENTS = len(ELEM_LIST)
-NUM_CHARGES = len(CHARGE_LIST)
-NUM_HS = len(HS_LIST)
-NUM_ATOMS_MEAN = 23.101
-NUM_ATOMS_STD = 6.652
 
-MEAN_DISTANCE = 4.814012207760507
-STD_DISTANCE = 2.991864705281403
+MEAN_DISTANCE = 2.0626
+STD_DISTANCE = 1.1746
 
 
 class BinominalGraphDataset(Dataset):

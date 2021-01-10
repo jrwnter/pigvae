@@ -7,6 +7,11 @@ from graphae.data import DenseGraphBatch
 from graphae.side_tasks import PropertyPredictor
 
 
+MEAN_DISTANCE = 2.0626
+STD_DISTANCE = 1.1746
+
+
+
 class GraphEncoder(torch.nn.Module):
     def __init__(self, hparams):
         super().__init__()
@@ -32,6 +37,7 @@ class GraphEncoder(torch.nn.Module):
 
     def forward(self, node_features, edge_features, mask):
         node_features, edge_features, mask = self.add_emb_node_and_feature(node_features, edge_features, mask)
+        edge_features = (edge_features - MEAN_DISTANCE) / STD_DISTANCE
         batch_size, num_nodes = node_features.size(0), node_features.size(1)
 
         edge_mask = mask.unsqueeze(1) * mask.unsqueeze(2)
