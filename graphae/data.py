@@ -20,7 +20,7 @@ STD_DISTANCE = 1.1746
 
 
 class BinominalGraphDataset(Dataset):
-    def __init__(self, n_mean=16, n_std=2, n_max=32, p_mean=0.2, p_std=0.1,
+    def __init__(self, n_mean=12, n_std=2, n_max=20, p_mean=0.2, p_std=0.1,
                  samples_per_epoch=100000):
         super().__init__()
         self.n_mean = n_mean
