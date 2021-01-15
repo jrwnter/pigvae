@@ -63,6 +63,7 @@ class GraphReconstructionLoss(torch.nn.Module):
             target=edges_true
         )
         loss = {
+            "edge_loss": edge_loss,
             "loss": edge_loss
         }
         return loss

@@ -25,7 +25,7 @@ class GraphEncoder(torch.nn.Module):
             num_layers=hparams["graph_encoder_num_layers"],
         )
         # 11 edge features (including empty edge) and 26 node features + emb node feature and emb node edge
-        self.fc_in = Linear(3, hparams["graph_encoder_hidden_dim"])
+        self.fc_in = Linear(16 * 2 + 1, hparams["graph_encoder_hidden_dim"])
         self.layer_norm = LayerNorm(hparams["graph_encoder_hidden_dim"])
         self.dropout = Dropout(0.1)
 
@@ -37,7 +37,6 @@ class GraphEncoder(torch.nn.Module):
 
     def forward(self, node_features, edge_features, mask):
         node_features, edge_features, mask = self.add_emb_node_and_feature(node_features, edge_features, mask)
-        edge_features = (edge_features - MEAN_DISTANCE) / STD_DISTANCE
         batch_size, num_nodes = node_features.size(0), node_features.size(1)
 
         edge_mask = mask.unsqueeze(1) * mask.unsqueeze(2)
@@ -46,6 +45,7 @@ class GraphEncoder(torch.nn.Module):
              node_features.unsqueeze(1).repeat_interleave(num_nodes, dim=1)),
             dim=-1)
         x = torch.cat((edge_features, node_features_combined), dim=-1)
+        #print(x.shape, edge_features.shape, node_features.shape, node_features_combined.shape)
         x = self.layer_norm(self.dropout(self.fc_in(x)))
         x = self.graph_transformer(x, mask=edge_mask)
         node_features = torch.diagonal(x, dim1=1, dim2=2).transpose(1, 2)

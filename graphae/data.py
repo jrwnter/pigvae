@@ -18,6 +18,8 @@ from networkx.linalg.graphmatrix import adjacency_matrix
 MEAN_DISTANCE = 2.0626
 STD_DISTANCE = 1.1746
 
+NODE_FEATURES = torch.eye(16).unsqueeze(0)
+
 
 class BinominalGraphDataset(Dataset):
     def __init__(self, n_mean=12, n_std=2, n_max=20, p_mean=0.2, p_std=0.1,
@@ -39,10 +41,10 @@ class BinominalGraphDataset(Dataset):
         return g
 
     def __getitem__(self, idx):
-        n = int(np.minimum(self.n_mean + np.random.randn() * self.n_std, self.n_max))
-        p = np.maximum(np.minimum(self.p_mean + np.random.randn() * self.p_std, 1), 0)
-        g = binomial_graph(n, p)
-        g = self.get_largest_subgraph(g)
+        #n = int(np.minimum(self.n_mean + np.random.randn() * self.n_std, self.n_max))
+        #p = np.maximum(np.minimum(self.p_mean + np.random.randn() * self.p_std, 1), 0)
+        g = binomial_graph(16, 0.5)
+        #g = self.get_largest_subgraph(g)
         return g
 
 
@@ -57,17 +59,21 @@ class DenseGraphBatch(Data):
     @classmethod
     def from_sparse_graph_list(cls, graph_list):
         max_num_nodes = max([graph.number_of_nodes() for graph in graph_list])
+        #diag = torch.eye(max_num_nodes).unsqueeze(0)
         node_features = []
         edge_features = []
         mask = []
         for graph in graph_list:
             num_nodes = graph.number_of_nodes()
-            degrees = graph.degree()
-            degrees = [degrees[i] for i in range(num_nodes)] + (max_num_nodes - num_nodes) * [0]
-            node_features.append(torch.Tensor(degrees).unsqueeze(0).unsqueeze(-1))
-            dm = torch.ones(1, max_num_nodes, max_num_nodes, 1) * -100
-            dm[0, :num_nodes, :num_nodes, 0] = torch.from_numpy(floyd_warshall_numpy(graph))
-            edge_features.append(dm)
+            graph.add_nodes_from([i for i in range(num_nodes, max_num_nodes)])
+            #degrees = graph.degree()
+            #degrees = [degrees[i] for i in range(num_nodes)] + (max_num_nodes - num_nodes) * [0]
+            node_features.append(NODE_FEATURES)
+            adj = torch.from_numpy(np.array(adjacency_matrix(graph).todense())).float().unsqueeze(0).unsqueeze(-1)
+            edge_features.append(adj)
+            #dm = torch.ones(1, max_num_nodes, max_num_nodes, 1) * -100
+            #dm[0, :num_nodes, :num_nodes, 0] = torch.from_numpy(floyd_warshall_numpy(graph))
+            #edge_features.append(dm)
             mask.append((torch.arange(max_num_nodes) < num_nodes).unsqueeze(0))
         node_features = torch.cat(node_features, dim=0)
         edge_features = torch.cat(edge_features, dim=0)

@@ -54,13 +54,13 @@ def add_arguments(parser):
     parser.add_argument("--nonlin", default="relu", type=str)
 
     # GRAPH ENCODER
-    parser.add_argument("--emb_dim", default=128, type=int)
+    parser.add_argument("--emb_dim", default=64, type=int)
     parser.add_argument("--graph_encoder_hidden_dim", default=256, type=int)
     parser.add_argument("--graph_encoder_k_dim", default=64, type=int)
     parser.add_argument("--graph_encoder_v_dim", default=64, type=int)
     parser.add_argument("--graph_encoder_num_heads", default=16, type=int)
     parser.add_argument("--graph_encoder_ppf_hidden_dim", default=1024, type=int)
-    parser.add_argument("--graph_encoder_num_layers", default=12, type=int)
+    parser.add_argument("--graph_encoder_num_layers", default=6, type=int)
 
     # GRAPH DECODER
 
@@ -69,7 +69,7 @@ def add_arguments(parser):
     parser.add_argument("--graph_decoder_v_dim", default=64, type=int)
     parser.add_argument("--graph_decoder_num_heads", default=16, type=int)
     parser.add_argument("--graph_decoder_ppf_hidden_dim", default=1024, type=int)
-    parser.add_argument("--graph_decoder_num_layers", default=12, type=int)
+    parser.add_argument("--graph_decoder_num_layers", default=6, type=int)
     parser.add_argument("--graph_decoder_pos_emb_dim", default=64, type=int)
 
 
