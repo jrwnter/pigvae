@@ -66,9 +66,9 @@ class DenseGraphBatch(Data):
         for graph in graph_list:
             num_nodes = graph.number_of_nodes()
             graph.add_nodes_from([i for i in range(num_nodes, max_num_nodes)])
-            #degrees = graph.degree()
-            #degrees = [degrees[i] for i in range(num_nodes)] + (max_num_nodes - num_nodes) * [0]
-            node_features.append(NODE_FEATURES)
+            perm = torch.randperm(16).unsqueeze(-1)
+            perm = torch.zeros(16, 16).scatter_(1, perm, 1).unsqueeze(0)
+            node_features.append(perm)
             adj = torch.from_numpy(np.array(adjacency_matrix(graph).todense())).float().unsqueeze(0).unsqueeze(-1)
             edge_features.append(adj)
             #dm = torch.ones(1, max_num_nodes, max_num_nodes, 1) * -100

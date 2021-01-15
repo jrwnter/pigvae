@@ -12,11 +12,11 @@ class PLGraphAE(pl.LightningModule):
         self.critic = Critic(hparams["alpha"])
 
     def forward(self, graph, training, tau):
-        graph_pred, perm, mu, logvar = self.graph_ae(graph, training, tau)
-        return graph_pred, perm, mu, logvar
+        graph_pred, perm = self.graph_ae(graph, training, tau)
+        return graph_pred, perm
 
     def training_step(self, graph, batch_idx):
-        graph_pred, perm, mu, logvar = self(
+        graph_pred, perm = self(
             graph=graph,
             training=True,
             tau=self.hparams["tau"]
@@ -25,14 +25,12 @@ class PLGraphAE(pl.LightningModule):
             graph_true=graph,
             graph_pred=graph_pred,
             perm=perm,
-            mu=mu,
-            logvar=logvar,
         )
         self.log_dict(loss)
         return loss
 
     def validation_step(self, graph, batch_idx):
-        graph_pred, perm, mu, logvar = self(
+        graph_pred, perm = self(
             graph=graph,
             training=True,
             tau=self.hparams["tau"]
@@ -41,11 +39,9 @@ class PLGraphAE(pl.LightningModule):
             graph_true=graph,
             graph_pred=graph_pred,
             perm=perm,
-            mu=mu,
-            logvar=logvar,
             prefix="val",
         )
-        graph_pred, perm, mu, logvar = self(
+        graph_pred, perm = self(
             graph=graph,
             training=False,
             tau=self.hparams["tau"]
@@ -54,8 +50,6 @@ class PLGraphAE(pl.LightningModule):
             graph_true=graph,
             graph_pred=graph_pred,
             perm=perm,
-            mu=mu,
-            logvar=logvar,
             prefix="val_hard",
         )
         metrics = {**metrics_soft, **metrics_hard}

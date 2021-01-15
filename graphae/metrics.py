@@ -16,26 +16,22 @@ class Critic(torch.nn.Module):
         self.alpha = alpha
         self.reconstruction_loss = GraphReconstructionLoss()
         self.perm_loss = PermutaionMatrixPenalty()
-        self.kld_loss = KLDLoss()
 
-    def forward(self, graph_true, graph_pred, perm, mu, logvar):
+    def forward(self, graph_true, graph_pred, perm):
         recon_loss = self.reconstruction_loss(
             graph_true=graph_true,
             graph_pred=graph_pred
         )
         perm_loss = self.perm_loss(perm)
-        kld_loss = self.kld_loss(mu, logvar)
-        loss = {**recon_loss, "perm_loss": perm_loss, "kld_loss": kld_loss}
-        loss["loss"] = loss["loss"] + 0.05 * perm_loss + 0.0001 * kld_loss
+        loss = {**recon_loss, "perm_loss": perm_loss}
+        loss["loss"] = loss["loss"] + 0.05 * perm_loss
         return loss
 
-    def evaluate(self, graph_true, graph_pred, perm, mu, logvar, prefix=None):
+    def evaluate(self, graph_true, graph_pred, perm, prefix=None):
         loss = self(
             graph_true=graph_true,
             graph_pred=graph_pred,
             perm=perm,
-            mu=mu,
-            logvar=logvar,
         )
         metrics = loss
 
@@ -99,16 +95,6 @@ class PermutaionMatrixPenalty(torch.nn.Module):
         entropy_col = self.entropy(perm, axis=1, normalize=False)
         entropy_row = self.entropy(perm, axis=2, normalize=False)
         loss = entropy_col.mean() + entropy_row.mean()
-        return loss
-
-
-class KLDLoss(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, mu, logvar):
-        loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), axis=1)
-        loss = torch.mean(loss)
         return loss
 
 

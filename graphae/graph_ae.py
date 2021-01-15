@@ -138,17 +138,11 @@ class Permuter(torch.nn.Module):
 class BottleNeckEncoder(torch.nn.Module):
     def __init__(self, d_in, d_out):
         super().__init__()
-        self.d_out = d_out
-        self.w = Linear(d_in, 2 * d_out)
+        self.w = Linear(d_in, d_out)
 
     def forward(self, x):
         x = self.w(relu(x))
-        mu = x[:, :self.d_out]
-        logvar = x[:, self.d_out:]
-        std = torch.exp(0.5 * logvar)
-        eps = torch.randn_like(std)
-        x = mu + eps * std
-        return x, mu, logvar
+        return x
 
 
 class BottleNeckDecoder(torch.nn.Module):
@@ -180,8 +174,8 @@ class GraphAE(torch.nn.Module):
             edge_features=edge_features,
             mask=mask,
         )
-        graph_emb, mu, logvar = self.bottle_neck_encoder(graph_emb)
-        return graph_emb, node_features, mu, logvar
+        graph_emb = self.bottle_neck_encoder(graph_emb)
+        return graph_emb, node_features
 
     def decode(self, graph_emb, perm, mask):
         graph_emb = self.bottle_neck_decoder(graph_emb)
@@ -198,10 +192,10 @@ class GraphAE(torch.nn.Module):
         return graph_pred
 
     def forward(self, graph, training, tau):
-        graph_emb, node_features, mu, logvar = self.encode(graph=graph)
+        graph_emb, node_features = self.encode(graph=graph)
         perm = self.permuter(node_features, mask=graph.mask, hard=not training, tau=tau)
         graph_pred = self.decode(graph_emb, perm, graph.mask)
-        return graph_pred, perm, mu, logvar
+        return graph_pred, perm
 
     @staticmethod
     def logits_to_one_hot(graph):
