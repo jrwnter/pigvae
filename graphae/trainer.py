@@ -60,7 +60,7 @@ class PLGraphAE(pl.LightningModule):
         optimizer = torch.optim.Adam(self.graph_ae.parameters(), lr=self.hparams["lr"], betas=(0.9, 0.98))
         lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(
             optimizer=optimizer,
-            gamma=0.98,
+            gamma=0.995,
         )
         scheduler = {
             'scheduler': lr_scheduler,
