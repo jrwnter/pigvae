@@ -22,14 +22,13 @@ NODE_FEATURES = torch.eye(16).unsqueeze(0)
 
 
 class BinominalGraphDataset(Dataset):
-    def __init__(self, n_mean=12, n_std=2, n_max=20, p_mean=0.2, p_std=0.1,
+    def __init__(self, n_min=12, n_max=20, p_min=0.4, p_max=0.6,
                  samples_per_epoch=100000):
         super().__init__()
-        self.n_mean = n_mean
-        self.n_std = n_std
+        self.n_min = n_min
         self.n_max = n_max
-        self.p_mean = p_mean
-        self.p_std = p_std
+        self.p_min = p_min
+        self.p_max = p_max
         self.samples_per_epoch = samples_per_epoch
 
     def __len__(self):
@@ -41,9 +40,9 @@ class BinominalGraphDataset(Dataset):
         return g
 
     def __getitem__(self, idx):
-        #n = int(np.minimum(self.n_mean + np.random.randn() * self.n_std, self.n_max))
-        #p = np.maximum(np.minimum(self.p_mean + np.random.randn() * self.p_std, 1), 0)
-        g = binomial_graph(16, 0.5)
+        n = np.random.randint(low=self.n_min, high=self.n_max)
+        p = np.random.uniform(low=self.p_min, high=self.p_max)
+        g = binomial_graph(n, p)
         #g = self.get_largest_subgraph(g)
         return g
 
@@ -58,7 +57,8 @@ class DenseGraphBatch(Data):
 
     @classmethod
     def from_sparse_graph_list(cls, graph_list):
-        max_num_nodes = max([graph.number_of_nodes() for graph in graph_list])
+        #max_num_nodes = max([graph.number_of_nodes() for graph in graph_list])
+        max_num_nodes = 20
         #diag = torch.eye(max_num_nodes).unsqueeze(0)
         node_features = []
         edge_features = []
@@ -66,9 +66,11 @@ class DenseGraphBatch(Data):
         for graph in graph_list:
             num_nodes = graph.number_of_nodes()
             graph.add_nodes_from([i for i in range(num_nodes, max_num_nodes)])
-            perm = torch.randperm(16).unsqueeze(-1)
-            perm = torch.zeros(16, 16).scatter_(1, perm, 1).unsqueeze(0)
-            node_features.append(perm)
+            perm = torch.randperm(num_nodes).unsqueeze(-1)
+            perm = torch.zeros(num_nodes, num_nodes).scatter_(1, perm, 1)
+            nf = torch.eye(max_num_nodes)
+            nf[:num_nodes, : num_nodes] = perm
+            node_features.append(nf.unsqueeze(0))
             adj = torch.from_numpy(np.array(adjacency_matrix(graph).todense())).float().unsqueeze(0).unsqueeze(-1)
             edge_features.append(adj)
             #dm = torch.ones(1, max_num_nodes, max_num_nodes, 1) * -100
@@ -92,14 +94,13 @@ class DenseGraphDataLoader(torch.utils.data.DataLoader):
 
 
 class MolecularGraphDataModule(pl.LightningDataModule):
-    def __init__(self, n_mean=16, n_std=2, n_max=32, p_mean=0.2, p_std=0.1,
+    def __init__(self, n_min=12, n_max=20, p_min=0.4, p_max=0.6,
                  samples_per_epoch=100000, batch_size=32, num_workers=1, debug=False):
         super().__init__()
-        self.n_mean = n_mean
-        self.n_std = n_std
+        self.n_min = n_min
         self.n_max = n_max
-        self.p_mean = p_mean
-        self.p_std = p_std
+        self.p_min = p_min
+        self.p_max = p_max
         self.samples_per_epoch = samples_per_epoch
         self.num_workers = num_workers
         self.batch_size = batch_size
@@ -110,11 +111,10 @@ class MolecularGraphDataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         train_dataset = BinominalGraphDataset(
-            n_mean=self.n_mean,
-            n_std=self.n_std,
+            n_min=self.n_min,
             n_max=self.n_max,
-            p_mean=self.p_mean,
-            p_std=self.p_std,
+            p_min=self.p_min,
+            p_max=self.p_max,
             samples_per_epoch=self.samples_per_epoch
         )
         train_sampler = DistributedSampler(
@@ -131,11 +131,10 @@ class MolecularGraphDataModule(pl.LightningDataModule):
 
     def val_dataloader(self):
         eval_dataset = BinominalGraphDataset(
-            n_mean=self.n_mean,
-            n_std=self.n_std,
+            n_min=self.n_min,
             n_max=self.n_max,
-            p_mean=self.p_mean,
-            p_std=self.p_std,
+            p_min=self.p_min,
+            p_max=self.p_max,
             samples_per_epoch=8192
         )
         eval_sampler = DistributedSampler(
