@@ -46,7 +46,7 @@ def add_arguments(parser):
 
     # GENERAL GRAPH PROPERTIES
     parser.add_argument("--max_num_nodes", default=32, type=int)
-    parser.add_argument("--num_node_features", default=20, type=int)
+    parser.add_argument("--num_node_features", default=1, type=int)
     parser.add_argument("--num_edge_features", default=4, type=int)
     parser.add_argument("--batch_norm", dest='batch_norm', action='store_true')
     parser.set_defaults(batch_norm=False)

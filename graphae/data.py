@@ -18,7 +18,7 @@ from networkx.linalg.graphmatrix import adjacency_matrix
 MEAN_DISTANCE = 2.0626
 STD_DISTANCE = 1.1746
 
-NODE_FEATURES = torch.eye(16).unsqueeze(0)
+NODE_FEATURES = torch.eye(20).unsqueeze(0)
 
 
 class BinominalGraphDataset(Dataset):
@@ -68,8 +68,8 @@ class DenseGraphBatch(Data):
             graph.add_nodes_from([i for i in range(num_nodes, max_num_nodes)])
             perm = torch.randperm(num_nodes).unsqueeze(-1)
             perm = torch.zeros(num_nodes, num_nodes).scatter_(1, perm, 1)
-            nf = torch.eye(max_num_nodes)
-            nf[:num_nodes, : num_nodes] = perm
+            nf = torch.ones(max_num_nodes, 1)
+            #nf[:num_nodes, : num_nodes] = perm
             node_features.append(nf.unsqueeze(0))
             adj = torch.from_numpy(np.array(adjacency_matrix(graph).todense())).float().unsqueeze(0).unsqueeze(-1)
             edge_features.append(adj)

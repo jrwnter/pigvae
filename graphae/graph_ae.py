@@ -25,7 +25,7 @@ class GraphEncoder(torch.nn.Module):
             num_layers=hparams["graph_encoder_num_layers"],
         )
         # 11 edge features (including empty edge) and 26 node features + emb node feature and emb node edge
-        self.fc_in = Linear(20 * 2 + 1, hparams["graph_encoder_hidden_dim"])
+        self.fc_in = Linear(1 * 2 + 1, hparams["graph_encoder_hidden_dim"])
         self.layer_norm = LayerNorm(hparams["graph_encoder_hidden_dim"])
         self.dropout = Dropout(0.1)
 
