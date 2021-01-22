@@ -11,7 +11,7 @@ class PLGraphAE(pl.LightningModule):
         self.graph_ae = GraphAE(hparams)
         self.critic = Critic(hparams["alpha"])
         self.tau_scheduler = TauScheduler(
-            start_value=1.0,
+            start_value=0.6,
             factor=0.98,
             step_size=2
         )
