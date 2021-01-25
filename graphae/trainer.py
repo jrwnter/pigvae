@@ -11,7 +11,7 @@ class PLGraphAE(pl.LightningModule):
         self.graph_ae = GraphAE(hparams)
         self.critic = Critic(hparams["alpha"])
         self.tau_scheduler = TauScheduler(
-            start_value=0.6,
+            start_value=1.0,
             factor=0.98,
             step_size=2
         )
@@ -64,14 +64,14 @@ class PLGraphAE(pl.LightningModule):
         self.log_dict(metrics)
         self.log_dict(metrics_soft)
 
-    def on_validation_epoch_end(self) -> None:
-        self.tau_scheduler()
+    """def on_validation_epoch_end(self) -> None:
+        self.tau_scheduler()"""
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.graph_ae.parameters(), lr=self.hparams["lr"], betas=(0.9, 0.98))
         lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(
             optimizer=optimizer,
-            gamma=0.99,
+            gamma=0.98,
         )
         scheduler = {
             'scheduler': lr_scheduler,

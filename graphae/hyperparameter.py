@@ -60,7 +60,7 @@ def add_arguments(parser):
     parser.add_argument("--graph_encoder_v_dim", default=64, type=int)
     parser.add_argument("--graph_encoder_num_heads", default=16, type=int)
     parser.add_argument("--graph_encoder_ppf_hidden_dim", default=1024, type=int)
-    parser.add_argument("--graph_encoder_num_layers", default=6, type=int)
+    parser.add_argument("--graph_encoder_num_layers", default=16, type=int)
 
     # GRAPH DECODER
 
@@ -69,7 +69,7 @@ def add_arguments(parser):
     parser.add_argument("--graph_decoder_v_dim", default=64, type=int)
     parser.add_argument("--graph_decoder_num_heads", default=16, type=int)
     parser.add_argument("--graph_decoder_ppf_hidden_dim", default=1024, type=int)
-    parser.add_argument("--graph_decoder_num_layers", default=6, type=int)
+    parser.add_argument("--graph_decoder_num_layers", default=16, type=int)
     parser.add_argument("--graph_decoder_pos_emb_dim", default=64, type=int)
 
 
@@ -83,6 +83,13 @@ def add_arguments(parser):
     parser.add_argument("--num_rows", default=None, type=int)
     parser.add_argument("--num_workers", default=32, type=int)
     parser.add_argument("--shuffle", default=1, type=int)
+    parser.add_argument("--graph_family", default="binominal", type=str)
+    parser.add_argument("--n_min", default=12, type=int)
+    parser.add_argument("--n_max", default=20, type=int)
+    parser.add_argument("--p_min", default=0.4, type=float)
+    parser.add_argument("--p_max", default=0.6, type=float)
+    parser.add_argument("--m_min", default=1, type=int)
+    parser.add_argument("--m_max", default=5, type=int)
 
     return parser
 

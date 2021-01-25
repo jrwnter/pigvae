@@ -30,10 +30,25 @@ def main(hparams):
     lr_logger = LearningRateMonitor()
     tb_logger = TensorBoardLogger(hparams.save_dir + "/run{}/".format(hparams.id))
     model = PLGraphAE(hparams.__dict__)
+    if hparams.graph_family == "binominal":
+        graph_kwargs = {
+            "n_min": hparams.n_min,
+            "n_max": hparams.n_max,
+            "p_min": hparams.p_min,
+            "p_max": hparams.p_max
+        }
+    elif hparams.graph_family == "barabasi_albert":
+        graph_kwargs = {
+            "n_min": hparams.n_min,
+            "n_max": hparams.n_max,
+            "m_min": hparams.m_min,
+            "m_max": hparams.m_max
+        }
     datamodule = MolecularGraphDataModule(
+        graph_family=hparams.graph_family,
+        graph_kwargs=graph_kwargs,
         batch_size=hparams.batch_size,
         num_workers=hparams.num_workers,
-        debug=hparams.test,
         samples_per_epoch=100000000
     )
     my_ddp_plugin = MyDDP()

@@ -10,7 +10,7 @@ from torch_geometric.data import Data
 from torch_geometric.transforms import ToDense
 from torch_geometric.utils import to_dense_batch, to_dense_adj
 import networkx as nx
-from networkx.generators.random_graphs import binomial_graph, erdos_renyi_graph
+from networkx.generators.random_graphs import binomial_graph, erdos_renyi_graph, barabasi_albert_graph
 from networkx.algorithms.shortest_paths.dense import floyd_warshall_numpy
 from networkx.linalg.graphmatrix import adjacency_matrix
 
@@ -19,6 +19,26 @@ MEAN_DISTANCE = 2.0626
 STD_DISTANCE = 1.1746
 
 NODE_FEATURES = torch.eye(20).unsqueeze(0)
+
+
+class BarabasiAlbertGraphDataset(Dataset):
+    def __init__(self, n_min=12, n_max=20, m_min=1, m_max=5,
+                 samples_per_epoch=100000):
+        super().__init__()
+        self.n_min = n_min
+        self.n_max = n_max
+        self.m_min = m_min
+        self.m_max = m_max
+        self.samples_per_epoch = samples_per_epoch
+
+    def __len__(self):
+        return self.samples_per_epoch
+
+    def __getitem__(self, idx):
+        n = np.random.randint(low=self.n_min, high=self.n_max)
+        m = np.random.randint(low=self.m_min, high=self.m_max)
+        g = barabasi_albert_graph(n, m)
+        return g
 
 
 class BinominalGraphDataset(Dataset):
@@ -94,13 +114,11 @@ class DenseGraphDataLoader(torch.utils.data.DataLoader):
 
 
 class MolecularGraphDataModule(pl.LightningDataModule):
-    def __init__(self, n_min=12, n_max=20, p_min=0.4, p_max=0.6,
-                 samples_per_epoch=100000, batch_size=32, num_workers=1, debug=False):
+    def __init__(self, graph_family, graph_kwargs,
+                 samples_per_epoch=100000, batch_size=32, num_workers=1):
         super().__init__()
-        self.n_min = n_min
-        self.n_max = n_max
-        self.p_min = p_min
-        self.p_max = p_max
+        self.graph_family = graph_family
+        self.graph_kwargs = graph_kwargs
         self.samples_per_epoch = samples_per_epoch
         self.num_workers = num_workers
         self.batch_size = batch_size
@@ -109,14 +127,15 @@ class MolecularGraphDataModule(pl.LightningDataModule):
         self.train_sampler = None
         self.eval_sampler = None
 
+    def make_dataset(self, samples_per_epoch):
+        if self.graph_family == "binomial":
+            ds = BinominalGraphDataset(samples_per_epoch=samples_per_epoch, **self.graph_kwargs)
+        elif self.graph_family == "barabasi_albert":
+            ds = BarabasiAlbertGraphDataset(samples_per_epoch=samples_per_epoch, **self.graph_kwargs)
+        return ds
+
     def train_dataloader(self):
-        train_dataset = BinominalGraphDataset(
-            n_min=self.n_min,
-            n_max=self.n_max,
-            p_min=self.p_min,
-            p_max=self.p_max,
-            samples_per_epoch=self.samples_per_epoch
-        )
+        train_dataset = self.make_dataset(samples_per_epoch=self.samples_per_epoch)
         train_sampler = DistributedSampler(
             dataset=train_dataset,
             shuffle=False
@@ -130,13 +149,7 @@ class MolecularGraphDataModule(pl.LightningDataModule):
         )
 
     def val_dataloader(self):
-        eval_dataset = BinominalGraphDataset(
-            n_min=self.n_min,
-            n_max=self.n_max,
-            p_min=self.p_min,
-            p_max=self.p_max,
-            samples_per_epoch=8192
-        )
+        eval_dataset = self.make_dataset(samples_per_epoch=8192)
         eval_sampler = DistributedSampler(
             dataset=eval_dataset,
             shuffle=False

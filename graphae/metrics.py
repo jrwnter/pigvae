@@ -24,7 +24,7 @@ class Critic(torch.nn.Module):
         )
         perm_loss = self.perm_loss(perm)
         loss = {**recon_loss, "perm_loss": perm_loss}
-        loss["loss"] = loss["loss"] + 0.05 * perm_loss
+        loss["loss"] = loss["loss"] + 0.1 * perm_loss
         return loss
 
     def evaluate(self, graph_true, graph_pred, perm, prefix=None):
