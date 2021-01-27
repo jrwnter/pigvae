@@ -2,17 +2,18 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
-import pandas as pd
+import random
 import pytorch_lightning as pl
 from rdkit import Chem
 from rdkit.Chem.rdmolops import GetDistanceMatrix
 from torch_geometric.data import Data
 from torch_geometric.transforms import ToDense
-from torch_geometric.utils import to_dense_batch, to_dense_adj
 import networkx as nx
-from networkx.generators.random_graphs import binomial_graph, erdos_renyi_graph, barabasi_albert_graph
-from networkx.algorithms.shortest_paths.dense import floyd_warshall_numpy
 from networkx.linalg.graphmatrix import adjacency_matrix
+
+from networkx.generators.random_graphs import *
+from networkx.generators.ego import ego_graph
+from networkx.generators.geometric import random_geometric_graph
 
 
 MEAN_DISTANCE = 2.0626
@@ -21,51 +22,21 @@ STD_DISTANCE = 1.1746
 NODE_FEATURES = torch.eye(20).unsqueeze(0)
 
 
-class BarabasiAlbertGraphDataset(Dataset):
-    def __init__(self, n_min=12, n_max=20, m_min=1, m_max=5,
-                 samples_per_epoch=100000):
+class RandomGraphDataset(Dataset):
+    def __init__(self, n_min=12, n_max=20, samples_per_epoch=100000):
         super().__init__()
         self.n_min = n_min
         self.n_max = n_max
-        self.m_min = m_min
-        self.m_max = m_max
         self.samples_per_epoch = samples_per_epoch
+        self.graph_generator = GraphGenerator()
 
     def __len__(self):
         return self.samples_per_epoch
 
     def __getitem__(self, idx):
         n = np.random.randint(low=self.n_min, high=self.n_max)
-        m = np.random.randint(low=self.m_min, high=self.m_max)
-        g = barabasi_albert_graph(n, m)
+        g = self.graph_generator(n)
         return g
-
-
-class BinominalGraphDataset(Dataset):
-    def __init__(self, n_min=12, n_max=20, p_min=0.4, p_max=0.6,
-                 samples_per_epoch=100000):
-        super().__init__()
-        self.n_min = n_min
-        self.n_max = n_max
-        self.p_min = p_min
-        self.p_max = p_max
-        self.samples_per_epoch = samples_per_epoch
-
-    def __len__(self):
-        return self.samples_per_epoch
-
-    def get_largest_subgraph(self, g):
-        g = g.subgraph(sorted(nx.connected_components(g), key=len, reverse=True)[0])
-        g = nx.convert_node_labels_to_integers(g, first_label=0)
-        return g
-
-    def __getitem__(self, idx):
-        n = np.random.randint(low=self.n_min, high=self.n_max)
-        p = np.random.uniform(low=self.p_min, high=self.p_max)
-        g = binomial_graph(n, p)
-        #g = self.get_largest_subgraph(g)
-        return g
-
 
 class DenseGraphBatch(Data):
     def __init__(self, node_features, edge_features, mask, **kwargs):
@@ -77,28 +48,20 @@ class DenseGraphBatch(Data):
 
     @classmethod
     def from_sparse_graph_list(cls, graph_list):
-        #max_num_nodes = max([graph.number_of_nodes() for graph in graph_list])
-        max_num_nodes = 20
-        #diag = torch.eye(max_num_nodes).unsqueeze(0)
+        max_num_nodes = max([graph.number_of_nodes() for graph in graph_list])
         node_features = []
         edge_features = []
         mask = []
         for graph in graph_list:
             num_nodes = graph.number_of_nodes()
             graph.add_nodes_from([i for i in range(num_nodes, max_num_nodes)])
-            perm = torch.randperm(num_nodes).unsqueeze(-1)
-            perm = torch.zeros(num_nodes, num_nodes).scatter_(1, perm, 1)
             nf = torch.ones(max_num_nodes, 1)
-            #nf[:num_nodes, : num_nodes] = perm
             node_features.append(nf.unsqueeze(0))
-            adj = torch.from_numpy(np.array(adjacency_matrix(graph).todense())).float().unsqueeze(0).unsqueeze(-1)
-            edge_features.append(adj)
-            #dm = torch.ones(1, max_num_nodes, max_num_nodes, 1) * -100
-            #dm[0, :num_nodes, :num_nodes, 0] = torch.from_numpy(floyd_warshall_numpy(graph))
-            #edge_features.append(dm)
+            adj = torch.from_numpy(np.array(adjacency_matrix(graph).todense())).float().unsqueeze(-1)
+            edge_features.append(adj.clone())
             mask.append((torch.arange(max_num_nodes) < num_nodes).unsqueeze(0))
         node_features = torch.cat(node_features, dim=0)
-        edge_features = torch.cat(edge_features, dim=0)
+        edge_features = torch.stack(edge_features, dim=0)
         mask = torch.cat(mask, dim=0)
         return cls(node_features=node_features, edge_features=edge_features, mask=mask)
 
@@ -114,10 +77,8 @@ class DenseGraphDataLoader(torch.utils.data.DataLoader):
 
 
 class MolecularGraphDataModule(pl.LightningDataModule):
-    def __init__(self, graph_family, graph_kwargs,
-                 samples_per_epoch=100000, batch_size=32, num_workers=1):
+    def __init__(self, graph_kwargs, samples_per_epoch=100000, batch_size=32, num_workers=1):
         super().__init__()
-        self.graph_family = graph_family
         self.graph_kwargs = graph_kwargs
         self.samples_per_epoch = samples_per_epoch
         self.num_workers = num_workers
@@ -127,15 +88,8 @@ class MolecularGraphDataModule(pl.LightningDataModule):
         self.train_sampler = None
         self.eval_sampler = None
 
-    def make_dataset(self, samples_per_epoch):
-        if self.graph_family == "binomial":
-            ds = BinominalGraphDataset(samples_per_epoch=samples_per_epoch, **self.graph_kwargs)
-        elif self.graph_family == "barabasi_albert":
-            ds = BarabasiAlbertGraphDataset(samples_per_epoch=samples_per_epoch, **self.graph_kwargs)
-        return ds
-
     def train_dataloader(self):
-        train_dataset = self.make_dataset(samples_per_epoch=self.samples_per_epoch)
+        train_dataset = RandomGraphDataset(samples_per_epoch=self.samples_per_epoch, **self.graph_kwargs)
         train_sampler = DistributedSampler(
             dataset=train_dataset,
             shuffle=False
@@ -149,7 +103,7 @@ class MolecularGraphDataModule(pl.LightningDataModule):
         )
 
     def val_dataloader(self):
-        eval_dataset = self.make_dataset(samples_per_epoch=8192)
+        eval_dataset = RandomGraphDataset(samples_per_epoch=8192, **self.graph_kwargs)
         eval_sampler = DistributedSampler(
             dataset=eval_dataset,
             shuffle=False
@@ -391,3 +345,127 @@ def batch_to_dense(batch, num_nodes):
     adj = torch.stack(adj, dim=0)
     return x, adj
 
+
+def binomial_ego_graph(n, p):
+    g = ego_graph(binomial_graph(n, p), 0)
+    g = nx.convert_node_labels_to_integers(g, first_label=0)
+    return g
+
+
+class GraphGenerator(object):
+    def __init__(self):
+        self.graph_params = {
+            "binominal": {
+                "func": binomial_graph,
+                "kwargs_float_ranges": {
+                    "p": (0.2, 0.6)
+                }
+            },
+            "binominal_ego": {
+                "func": binomial_ego_graph,
+                "kwargs_float_ranges": {
+                    "p": (0.2, 0.6)
+                }
+            },
+            "newman_watts_strogatz": {
+                "func": newman_watts_strogatz_graph,
+                "kwargs_int_ranges": {
+                    "k": (2, 6),
+                },
+                "kwargs_float_ranges": {
+                    "p": (0.2, 0.6)
+                }
+            },
+            "watts_strogatz": {
+                "func": watts_strogatz_graph,
+                "kwargs_int_ranges": {
+                    "k": (2, 6),
+                },
+                "kwargs_float_ranges": {
+                    "p": (0.2, 0.6)
+                }
+            },
+            "random_regular": {
+                "func": random_regular_graph,
+                "kwargs_int_ranges": {
+                    "d": (3, 6),  # n*d must be even
+                }
+            },
+            "barabasi_albert": {
+                "func": barabasi_albert_graph,
+                "kwargs_int_ranges": {
+                    "m": (1, 6),
+                }
+            },
+            "dual_barabasi_albert": {
+                "func": dual_barabasi_albert_graph,
+                "kwargs_int_ranges": {
+                    "m1": (1, 6),
+                    "m2": (1, 6),
+                },
+                "kwargs_float_ranges": {
+                    "p": (0.1, 0.9)
+                }
+            },
+            "extended_barabasi_albert": {
+                "func": extended_barabasi_albert_graph,
+                "kwargs_int_ranges": {
+                    "m": (1, 6),
+                },
+                "kwargs_float_ranges": {
+                    "p": (0.1, 0.49),
+                    "q": (0.1, 0.49)
+                }
+
+            },
+            "powerlaw_cluster": {
+                "func": powerlaw_cluster_graph,
+                "kwargs_int_ranges": {
+                    "m": (1, 6),
+                },
+                "kwargs_float_ranges": {
+                    "p": (0.1, 0.9),
+                }
+            },
+            "random_powerlaw_tree": {
+                "func": random_powerlaw_tree,
+                "kwargs": {
+                    "gamma": 3,
+                    "tries": 1000
+                }
+            },
+            "random_geometric": {
+                "func": random_geometric_graph,
+                "kwargs_float_ranges": {
+                    "p": (0.4, 0.5),
+                },
+                "kwargs": {
+                    "radius": 1
+                }
+            }
+        }
+        self.graph_types = list(self.graph_params.keys())
+
+    def __call__(self, n, graph_type=None):
+        if graph_type is None:
+            graph_type = random.choice(self.graph_types)
+        params = self.graph_params[graph_type]
+        kwargs = {}
+        if "kwargs" in params:
+            kwargs = {**params["kwargs"]}
+        if "kwargs_int_ranges" in params:
+            for key, arg in params["kwargs_int_ranges"].items():
+                kwargs[key] = np.random.randint(arg[0], arg[1] + 1)
+        if "kwargs_float_ranges" in params:
+            for key, arg in params["kwargs_float_ranges"].items():
+                kwargs[key] = np.random.uniform(arg[0], arg[1])
+
+        # check if d * n even
+        if graph_type == "random_regular":
+            if n * kwargs["d"] % 2 != 0:
+                n -= 1
+        try:
+            g = params["func"](n=n, **kwargs)
+        except nx.exception.NetworkXError:
+            g = self(n)
+        return g

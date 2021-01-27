@@ -161,6 +161,7 @@ class GraphAE(torch.nn.Module):
         self.encoder = GraphEncoder(hparams)
         self.bottle_neck_encoder = BottleNeckEncoder(hparams["graph_encoder_hidden_dim"], hparams["emb_dim"])
         self.bottle_neck_decoder = BottleNeckDecoder(hparams["emb_dim"], hparams["graph_decoder_hidden_dim"])
+        self.num_atoms_predictor = PropertyPredictor(hparams["emb_dim"], 256, 1)
         self.permuter = Permuter(hparams)
         self.decoder = GraphDecoder(hparams)
 
@@ -178,6 +179,7 @@ class GraphAE(torch.nn.Module):
         return graph_emb, node_features
 
     def decode(self, graph_emb, perm, mask):
+        num_atoms = self.num_atoms_predictor(graph_emb).squeeze()
         graph_emb = self.bottle_neck_decoder(graph_emb)
         edge_logits = self.decoder(
             graph_emb=graph_emb,
@@ -188,6 +190,7 @@ class GraphAE(torch.nn.Module):
             node_features=mask,
             edge_features=edge_logits,
             mask=mask,
+            num_atoms=num_atoms
         )
         return graph_pred
 

@@ -8,6 +8,9 @@ from pytorch_lightning.metrics.classification import Recall, Precision, Accuracy
 MEAN_DISTANCE = 2.0626
 STD_DISTANCE = 1.1746
 
+MEAN_NUM_ATOMS = 17.5
+STD_NUM_ATOMS = 5.8
+
 
 # TODO: make metric for loss. Right now does not sync correctly, I guess?
 class Critic(torch.nn.Module):
@@ -16,6 +19,7 @@ class Critic(torch.nn.Module):
         self.alpha = alpha
         self.reconstruction_loss = GraphReconstructionLoss()
         self.perm_loss = PermutaionMatrixPenalty()
+        self.property_loss = PropertyLoss()
 
     def forward(self, graph_true, graph_pred, perm):
         recon_loss = self.reconstruction_loss(
@@ -23,8 +27,12 @@ class Critic(torch.nn.Module):
             graph_pred=graph_pred
         )
         perm_loss = self.perm_loss(perm)
-        loss = {**recon_loss, "perm_loss": perm_loss}
-        loss["loss"] = loss["loss"] + 0.1 * perm_loss
+        property_loss = self.property_loss(
+            input=graph_pred.num_atoms,
+            target=(graph_true.mask.sum(axis=1).float() - MEAN_NUM_ATOMS) / STD_NUM_ATOMS
+        )
+        loss = {**recon_loss, "perm_loss": perm_loss, "property_loss": property_loss}
+        loss["loss"] = loss["loss"] + 0.1 * perm_loss + property_loss
         return loss
 
     def evaluate(self, graph_true, graph_pred, perm, prefix=None):
