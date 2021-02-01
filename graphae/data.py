@@ -8,6 +8,7 @@ from rdkit import Chem
 from rdkit.Chem.rdmolops import GetDistanceMatrix
 from torch_geometric.data import Data
 from torch_geometric.transforms import ToDense
+from torch_geometric.utils import from_networkx
 import networkx as nx
 from networkx.linalg.graphmatrix import adjacency_matrix
 
@@ -37,6 +38,18 @@ class RandomGraphDataset(Dataset):
         n = np.random.randint(low=self.n_min, high=self.n_max)
         g = self.graph_generator(n)
         return g
+
+
+class PyGRandomGraphDataset(RandomGraphDataset):
+    def __getitem__(self, idx):
+        n = np.random.randint(low=self.n_min, high=self.n_max)
+        g = self.graph_generator(n)
+        g = from_networkx(g)
+        if g.pos is not None:
+            del g.pos
+        return g
+
+
 
 class DenseGraphBatch(Data):
     def __init__(self, node_features, edge_features, mask, **kwargs):
@@ -361,12 +374,12 @@ class GraphGenerator(object):
                     "p": (0.2, 0.6)
                 }
             },
-            "binominal_ego": {
+            """"binominal_ego": {
                 "func": binomial_ego_graph,
                 "kwargs_float_ranges": {
                     "p": (0.2, 0.6)
                 }
-            },
+            },"""
             "newman_watts_strogatz": {
                 "func": newman_watts_strogatz_graph,
                 "kwargs_int_ranges": {
@@ -469,3 +482,160 @@ class GraphGenerator(object):
         except nx.exception.NetworkXError:
             g = self(n)
         return g
+
+
+class EvalRandomGraphDataset(Dataset):
+    def __init__(self, n, pyg=False):
+        self.n = n
+        self.pyg = pyg
+        self.graph_params = {
+            "binominal": {
+                "func": binomial_graph,
+                "kwargs": {
+                    "p": (0.25, 0.5)
+                }
+            },
+            "binominal_ego": {
+                "func": binomial_ego_graph,
+                "kwargs": {
+                    "p": (0.25, 0.5)
+                }
+            },
+            "newman_watts_strogatz": {
+                "func": newman_watts_strogatz_graph,
+                "kwargs": {
+                    "k": (2, 2, 5, 5),
+                    "p": (0.25, 0.75, 0.25, 0.75,)
+                }
+            },
+            "watts_strogatz": {
+                "func": watts_strogatz_graph,
+                "kwargs": {
+                    "k": (2, 2, 5, 5),
+                    "p": (0.25, 0.75, 0.25, 0.75,)
+                }
+            },
+            "random_regular": {
+                "func": random_regular_graph,
+                "kwargs": {
+                    "d": (3, 4, 5, 6)
+                }
+            },
+            "barabasi_albert": {
+                "func": barabasi_albert_graph,
+                "kwargs": {
+                    "m": (1, 2, 3, 4),
+                }
+            },
+            "dual_barabasi_albert": {
+                "func": dual_barabasi_albert_graph,
+                "kwargs": {
+                    "m1": (2, 2),
+                    "m2": (4, 4),
+                    "p": (0.25, 0.75)
+                }
+            },
+            "extended_barabasi_albert": {
+                "func": extended_barabasi_albert_graph,
+                "kwargs": {
+                    "m": (1, 2, 4),
+                    "p": (0.5, 0.5, 0.5),
+                    "q": (0.25, 0.25, 0.25)
+                }
+
+            },
+            "powerlaw_cluster": {
+                "func": powerlaw_cluster_graph,
+                "kwargs": {
+                    "m": (2, 3, 4),
+                },
+                "kwargs_fix": {
+                    "p": 0.5
+                }
+            },
+            "random_powerlaw_tree": {
+                "func": random_powerlaw_tree,
+                "kwargs_fix": {
+                    "gamma": 3,
+                    "tries": 10000
+                }
+            },
+            "random_geometric": {
+                "func": random_geometric_graph,
+                "kwargs": {
+                    "p": (0.35, 0.55),
+                },
+                "kwargs_fix": {
+                    "radius": 1
+                }
+            }
+        }
+        # no ego
+        self.graph_types = ["binominal", "barabasi_albert", "random_geometric", "random_regular",
+                       "powerlaw_cluster", "random_powerlaw_tree", "watts_strogatz", "extended_barabasi_albert",
+                       "newman_watts_strogatz", "dual_barabasi_albert"]
+        graphs, labels = self.generate_dataset()
+        c = list(zip(graphs, labels))
+
+        random.shuffle(c)
+
+        self.graphs, self.labels = zip(*c)
+
+    def generate_dataset(self):
+        label = 0
+        graphs = []
+        labels = []
+        for j, graph_type in enumerate(self.graph_types):
+            params = self.graph_params[graph_type]
+            func = params["func"]
+            if "kwargs" in params:
+                kwargs = params["kwargs"]
+            else:
+                kwargs = None
+            if "kwargs_fix" in params:
+                kwargs_fix = params["kwargs_fix"]
+            else:
+                kwargs_fix = None
+            if kwargs is not None:
+                num_settings = len(list(kwargs.values())[0])
+            else:
+                num_settings = 1
+            for i in range(num_settings):
+                final_kwargs = {}
+                if kwargs is not None:
+                    for key, args in kwargs.items():
+                        if num_settings > 1:
+                            final_kwargs[key] = args[i]
+                        else:
+                            final_kwargs[key] = args
+                num_graphs = int(256 / num_settings)
+                if kwargs_fix is not None:
+                    final_kwargs2 = {**final_kwargs, **kwargs_fix}
+                elif kwargs is None:
+                    final_kwargs2 = kwargs_fix
+                else:
+                    final_kwargs2 = final_kwargs
+                gs = [func(n=self.n, **final_kwargs2) for _ in range(num_graphs)]
+                graphs.extend(gs)
+                labels.extend(len(gs) * [label])
+                label += 1
+        return graphs, labels
+
+    def __len__(self):
+        return len(self.graphs)
+
+    def __getitem__(self, idx):
+        graph = self.graphs[idx]
+        label = self.labels[idx]
+        #print(graph.number_of_edges())
+        if self.pyg:
+            g = from_networkx(graph)
+            if g.pos is not None:
+                del g.pos
+            if g.edge_index.dtype != torch.long:
+                print(g)
+            #g = Data(edge_index=g.edge_index, num_nodes=graph.number_of_nodes)
+            g.y = torch.Tensor([label]).long()
+            return g
+        else:
+            return graph, label
