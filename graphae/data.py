@@ -492,7 +492,7 @@ class EvalRandomGraphDataset(Dataset):
             "binominal": {
                 "func": binomial_graph,
                 "kwargs": {
-                    "p": (0.25, 0.5)
+                    "p": (0.25, 0.35, 0.5)
                 }
             },
             "binominal_ego": {
@@ -531,8 +531,8 @@ class EvalRandomGraphDataset(Dataset):
                 "func": dual_barabasi_albert_graph,
                 "kwargs": {
                     "m1": (2, 2),
-                    "m2": (4, 4),
-                    "p": (0.25, 0.75)
+                    "m2": (4, 1),
+                    "p": (0.5, 0.5)
                 }
             },
             "extended_barabasi_albert": {
@@ -572,7 +572,7 @@ class EvalRandomGraphDataset(Dataset):
         }
         # no ego
         self.graph_types = ["binominal", "barabasi_albert", "random_geometric", "random_regular",
-                       "powerlaw_cluster", "random_powerlaw_tree", "watts_strogatz", "extended_barabasi_albert",
+                            "random_powerlaw_tree", "watts_strogatz", "extended_barabasi_albert",
                        "newman_watts_strogatz", "dual_barabasi_albert"]
         graphs, labels = self.generate_dataset()
         c = list(zip(graphs, labels))
