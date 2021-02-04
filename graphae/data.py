@@ -60,12 +60,21 @@ class DenseGraphBatch(Data):
             setattr(self, key, item)
 
     @classmethod
-    def from_sparse_graph_list(cls, graph_list):
-        max_num_nodes = max([graph.number_of_nodes() for graph in graph_list])
+    def from_sparse_graph_list(cls, data_list, labels=False):
+        if labels:
+            max_num_nodes = max([graph.number_of_nodes() for graph, label in data_list])
+        else:
+            max_num_nodes = max([graph.number_of_nodes() for graph in data_list])
         node_features = []
         edge_features = []
         mask = []
-        for graph in graph_list:
+        y = []
+        for data in data_list:
+            if labels:
+                graph, label = data
+                y.append(label)
+            else:
+                graph = data
             num_nodes = graph.number_of_nodes()
             graph.add_nodes_from([i for i in range(num_nodes, max_num_nodes)])
             nf = torch.ones(max_num_nodes, 1)
@@ -76,7 +85,10 @@ class DenseGraphBatch(Data):
         node_features = torch.cat(node_features, dim=0)
         edge_features = torch.stack(edge_features, dim=0)
         mask = torch.cat(mask, dim=0)
-        return cls(node_features=node_features, edge_features=edge_features, mask=mask)
+        batch = cls(node_features=node_features, edge_features=edge_features, mask=mask)
+        if labels:
+            batch.y = torch.Tensor(y)
+        return batch
 
     def __repr__(self):
         repr_list = ["{}={}".format(key, list(value.shape)) for key, value in self.__dict__.items()]
@@ -84,9 +96,9 @@ class DenseGraphBatch(Data):
 
 
 class DenseGraphDataLoader(torch.utils.data.DataLoader):
-    def __init__(self, dataset, batch_size=1, shuffle=False, **kwargs):
+    def __init__(self, dataset, batch_size=1, shuffle=False, labels=False, **kwargs):
         super().__init__(dataset, batch_size, shuffle,
-                         collate_fn=lambda data_list: DenseGraphBatch.from_sparse_graph_list(data_list), **kwargs)
+                         collate_fn=lambda data_list: DenseGraphBatch.from_sparse_graph_list(data_list, labels), **kwargs)
 
 
 class MolecularGraphDataModule(pl.LightningDataModule):
@@ -638,4 +650,41 @@ class EvalRandomGraphDataset(Dataset):
             g.y = torch.Tensor([label]).long()
             return g
         else:
+            return graph, label
+
+
+
+class EvalRandomBinomialGraphDataset(Dataset):
+    def __init__(self, n_min, n_max, p_min, p_max, num_samples, pyg=False):
+        self.n_min = n_min
+        self.n_max = n_max
+        self.p_min = p_min
+        self.p_max = p_max
+        self.num_samples = num_samples
+        self.pyg = pyg
+        self.graphs, self.labels = self.generate_dataset()
+
+    def generate_dataset(self):
+        graphs = []
+        labels = []
+        for i in range(self.num_samples):
+            n = np.random.randint(low=self.n_min, high=self.n_max)
+            p = np.random.uniform(low=self.p_min, high=self.p_max)
+            g = binomial_graph(n, p)
+            if self.pyg:
+                g = from_networkx(g)
+                g.y = p
+            graphs.append(g)
+            labels.append(p)
+        return graphs, labels
+
+    def __len__(self):
+        return len(self.graphs)
+
+    def __getitem__(self, idx):
+        graph = self.graphs[idx]
+        if self.pyg:
+            return graph
+        else:
+            label = self.labels[idx]
             return graph, label
