@@ -2,8 +2,6 @@ import numpy as np
 import torch
 from torch.nn import Linear, Dropout, LayerNorm
 from torch.nn.functional import softmax, relu
-from torch_geometric.utils import softmax as sparse_softmax
-from torch_scatter import scatter
 
 """
 adapted from https://github.com/jadore801120/attention-is-all-you-need-pytorch

@@ -1,6 +1,7 @@
 import os
-DEFAULT_DATA_PATH = "/home/ggwaq/projects/graph_vae/smiles_with_features.csv.gz"
-DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves16")
+
+
+DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves_synthetic")
 
 
 def add_arguments(parser):
@@ -18,8 +19,6 @@ def add_arguments(parser):
     parser.add_argument('-g', '--gpus', default=1, type=int)
     parser.add_argument('-e', '--num_epochs', default=5000, type=int)
     parser.add_argument("--num_eval_samples", default=8192, type=int)
-    parser.add_argument("--num_samples_per_epoch", default=800000000, type=int)
-    parser.add_argument("--num_samples_per_epoch_inc", default=2000000, type=int)
     parser.add_argument("--eval_freq", default=1000, type=int)
     parser.add_argument("-s", "--save_dir", default=DEFAULT_SAVE_DIR, type=str)
     parser.add_argument("--precision", default=32, type=int)
@@ -30,28 +29,19 @@ def add_arguments(parser):
     # TRAINING
     parser.add_argument("--resume_ckpt", default="", type=str)
     parser.add_argument("-b", "--batch_size", default=32, type=int)
-    parser.add_argument("--lr", default=0.0001, type=float)
-    parser.add_argument("--lr_scheduler_factor", default=0.5, type=float)
-    parser.add_argument("--lr_scheduler_patience", default=2, type=int)
-    parser.add_argument("--lr_scheduler_cooldown", default=5, type=int)
-    parser.add_argument("--start_tf", default=0.9, type=float)
-    parser.add_argument("--tf_decay_factor", default=0.9, type=float)
-    parser.add_argument("--tf_decay_freq", default=20, type=int)
+    parser.add_argument("--lr", default=0.00005, type=float)
     parser.add_argument("--tau", default=1.0, type=float)
-    parser.add_argument("--alpha", default=0.0, type=float)
-    parser.add_argument("--dropout", default=0.0, type=float)
-    parser.add_argument("--emb_noise", default=0.05, type=float)
+    parser.add_argument("--tau_decay_factor", default=0.99, type=float)
+    parser.add_argument("--tau_decay_step_size", default=0, type=int)
+    parser.add_argument("--kld_loss_scale", default=0.001, type=float)
+    parser.add_argument("--perm_loss_scale", default=0.5, type=float)
+    parser.add_argument("--property_loss_scale", default=0.1, type=float)
     parser.add_argument("--vae", dest='vae', action='store_true')
     parser.set_defaults(vae=False)
 
     # GENERAL GRAPH PROPERTIES
-    parser.add_argument("--max_num_nodes", default=32, type=int)
     parser.add_argument("--num_node_features", default=1, type=int)
-    parser.add_argument("--num_edge_features", default=4, type=int)
-    parser.add_argument("--batch_norm", dest='batch_norm', action='store_true')
-    parser.set_defaults(batch_norm=False)
-
-    parser.add_argument("--nonlin", default="relu", type=str)
+    parser.add_argument("--num_edge_features", default=1, type=int)
 
     # GRAPH ENCODER
     parser.add_argument("--emb_dim", default=64, type=int)
@@ -74,16 +64,14 @@ def add_arguments(parser):
 
 
     # PROPERTY PREDICTOR
-    parser.add_argument("--property_predictor_hidden_dim", default=1024, type=int)
-    parser.add_argument("--num_properties", default=8, type=int)
+    parser.add_argument("--property_predictor_hidden_dim", default=256, type=int)
+    parser.add_argument("--num_properties", default=1, type=int)
 
 
     # DATA
-    parser.add_argument("--data_path", default=DEFAULT_DATA_PATH, type=str)
-    parser.add_argument("--num_rows", default=None, type=int)
     parser.add_argument("--num_workers", default=32, type=int)
     parser.add_argument("--shuffle", default=1, type=int)
-    parser.add_argument("--graph_family", default="binominal", type=str)
+    parser.add_argument("--graph_family", default="binomial", type=str)
     parser.add_argument("--n_min", default=12, type=int)
     parser.add_argument("--n_max", default=20, type=int)
     parser.add_argument("--p_min", default=0.4, type=float)

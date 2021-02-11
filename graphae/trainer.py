@@ -1,29 +1,25 @@
+import torch
 import pytorch_lightning as pl
-from graphae.graph_ae import GraphAE
-from graphae.metrics import *
+from graphae.modules import GraphAE
 
 
 class PLGraphAE(pl.LightningModule):
 
-    def __init__(self, hparams):
+    def __init__(self, hparams, critic):
         super().__init__()
         self.hparams = hparams
         self.graph_ae = GraphAE(hparams)
-        self.critic = Critic(hparams["alpha"])
-        self.tau_scheduler = TauScheduler(
-            start_value=1,
-            factor=0.99,
-            step_size=5
-        )
+        self.critic = critic
+        self.tau_scheduler = TauScheduler(hparams)
 
     def forward(self, graph, training, tau):
-        graph_pred, perm = self.graph_ae(graph, training, tau)
-        return graph_pred, perm
+        graph_pred, perm, mu, logvar = self.graph_ae(graph, training, tau)
+        return graph_pred, perm, mu, logvar
 
     def training_step(self, graph, batch_idx):
         tau = self.tau_scheduler.tau
         self.log("tau", tau)
-        graph_pred, perm = self(
+        graph_pred, perm, mu, logvar = self(
             graph=graph,
             training=True,
             tau=tau
@@ -32,13 +28,15 @@ class PLGraphAE(pl.LightningModule):
             graph_true=graph,
             graph_pred=graph_pred,
             perm=perm,
+            mu=mu,
+            logvar=logvar,
         )
         self.log_dict(loss)
         return loss
 
     def validation_step(self, graph, batch_idx):
         tau = self.tau_scheduler.tau
-        graph_pred, perm = self(
+        graph_pred, perm, mu, logvar = self(
             graph=graph,
             training=True,
             tau=tau
@@ -47,9 +45,11 @@ class PLGraphAE(pl.LightningModule):
             graph_true=graph,
             graph_pred=graph_pred,
             perm=perm,
+            mu=mu,
+            logvar=logvar,
             prefix="val",
         )
-        graph_pred, perm = self(
+        graph_pred, perm, mu, logvar = self(
             graph=graph,
             training=False,
             tau=tau
@@ -58,14 +58,16 @@ class PLGraphAE(pl.LightningModule):
             graph_true=graph,
             graph_pred=graph_pred,
             perm=perm,
+            mu=mu,
+            logvar=logvar,
             prefix="val_hard",
         )
         metrics = {**metrics_soft, **metrics_hard}
         self.log_dict(metrics)
         self.log_dict(metrics_soft)
 
-        """def on_validation_epoch_end(self) -> None:
-        self.tau_scheduler()"""
+    def on_validation_epoch_end(self) -> None:
+        self.tau_scheduler()
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.graph_ae.parameters(), lr=self.hparams["lr"], betas=(0.9, 0.98))
@@ -73,11 +75,17 @@ class PLGraphAE(pl.LightningModule):
             optimizer=optimizer,
             gamma=0.99,
         )
-        scheduler = {
-            'scheduler': lr_scheduler,
-            'interval': 'step',
-            'frequency': 2 * (self.hparams["eval_freq"] + 1)
-        }
+        if "eval_freq" in self.hparams:
+            scheduler = {
+                'scheduler': lr_scheduler,
+                'interval': 'step',
+                'frequency': 2 * (self.hparams["eval_freq"] + 1)
+            }
+        else:
+            scheduler = {
+                'scheduler': lr_scheduler,
+                'interval': 'epoch'
+            }
         return [optimizer], [scheduler]
 
     def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_idx, optimizer_closure=None,
@@ -94,15 +102,15 @@ class PLGraphAE(pl.LightningModule):
 
 
 class TauScheduler(object):
-    def __init__(self, start_value, factor, step_size):
-        self.tau = start_value
-        self.factor = factor
-        self.step_size = step_size
+    def __init__(self, hparams):
+        self.tau = hparams["tau"]
+        self.factor = hparams["tau_decay_factor"]
+        self.step_size = hparams["tau_decay_step_size"]
         self.steps = 0
 
     def __call__(self):
         self.steps += 1
-        if self.steps >= self.step_size:
-            self.tau *= self.factor
-            self.steps = 0
-
+        if self.step_size > 0:
+            if self.steps >= self.step_size:
+                self.tau *= self.factor
+                self.steps = 0

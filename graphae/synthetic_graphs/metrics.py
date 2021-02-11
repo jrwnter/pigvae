@@ -1,45 +1,44 @@
 import torch
-import numpy as np
-from sklearn.metrics import balanced_accuracy_score
-from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss, L1Loss, MSELoss, TripletMarginLoss
-from pytorch_lightning.metrics.classification import Recall, Precision, Accuracy
+from torch.nn import BCEWithLogitsLoss, MSELoss
 
 
-MEAN_DISTANCE = 2.0626
-STD_DISTANCE = 1.1746
-
-MEAN_NUM_ATOMS = 17.5
-STD_NUM_ATOMS = 5.8
-
-
-# TODO: make metric for loss. Right now does not sync correctly, I guess?
 class Critic(torch.nn.Module):
-    def __init__(self, alpha=0.1):
+    def __init__(self, hparams):
         super().__init__()
-        self.alpha = alpha
+        self.alpha = hparams["kld_loss_scale"]
+        self.beta = hparams["perm_loss_scale"]
+        self.gamma = hparams["property_loss_scale"]
+        self.vae = hparams["vae"]
         self.reconstruction_loss = GraphReconstructionLoss()
         self.perm_loss = PermutaionMatrixPenalty()
         self.property_loss = PropertyLoss()
+        self.kld_loss = KLDLoss()
 
-    def forward(self, graph_true, graph_pred, perm):
+    def forward(self, graph_true, graph_pred, perm, mu, logvar):
         recon_loss = self.reconstruction_loss(
             graph_true=graph_true,
             graph_pred=graph_pred
         )
         perm_loss = self.perm_loss(perm)
         property_loss = self.property_loss(
-            input=graph_pred.num_atoms,
-            target=(graph_true.mask.sum(axis=1).float() - MEAN_NUM_ATOMS) / STD_NUM_ATOMS
+            input=graph_pred.properties,
+            target=graph_true.properties
         )
         loss = {**recon_loss, "perm_loss": perm_loss, "property_loss": property_loss}
-        loss["loss"] = loss["loss"] + 0.1 * perm_loss + property_loss
+        loss["loss"] = loss["loss"] + self.beta * perm_loss + self.gamma * property_loss
+        if self.vae:
+            kld_loss = self.kld_loss(mu, logvar)
+            loss["kld_loss"] = kld_loss
+            loss["loss"] = loss["loss"] + self.alpha * kld_loss
         return loss
 
-    def evaluate(self, graph_true, graph_pred, perm, prefix=None):
+    def evaluate(self, graph_true, graph_pred, perm, mu, logvar, prefix=None):
         loss = self(
             graph_true=graph_true,
             graph_pred=graph_pred,
             perm=perm,
+            mu=mu,
+            logvar=logvar
         )
         metrics = loss
 
@@ -106,31 +105,11 @@ class PermutaionMatrixPenalty(torch.nn.Module):
         return loss
 
 
-def scipy_balanced_accuracy(input, target):
-    device = input.device
-    if input.dim() == 2:
-        target = torch.argmax(target, axis=-1)
-        input = torch.argmax(input, axis=-1)
-    elif input.dim() > 2:
-        print(input.shape)
-        raise ValueError
-    target = target.cpu().numpy()
-    input = input.cpu().numpy()
-    acc = balanced_accuracy_score(y_true=target, y_pred=input)
-    acc = torch.from_numpy(np.array(acc)).to(device).float()
-    return acc
+class KLDLoss(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
 
-
-def node_balanced_accuracy(nodes_pred, nodes_true):
-    element_type_true, element_type_pred = nodes_true[:, :11], nodes_pred[:, :11]
-    charge_type_true, charge_type_pred = nodes_true[:, 11:16], nodes_pred[:, 11:16]
-    hybridization_type_true, hybridization_type_pred = nodes_true[:, 16:], nodes_pred[:, 16:]
-    element_type_acc = scipy_balanced_accuracy(element_type_pred, element_type_true)
-    charge_type_acc = scipy_balanced_accuracy(charge_type_pred, charge_type_true)
-    hybridization_type_acc = scipy_balanced_accuracy(hybridization_type_pred, hybridization_type_true)
-    return element_type_acc, charge_type_acc, hybridization_type_acc
-
-
-def edge_balanced_accuracy(edges_pred, edges_true):
-    acc = scipy_balanced_accuracy(edges_pred, edges_true)
-    return acc
+    def forward(self, mu, logvar):
+        loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), axis=1)
+        loss = torch.mean(loss)
+        return loss
