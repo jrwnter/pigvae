@@ -7,7 +7,7 @@ class PLGraphAE(pl.LightningModule):
 
     def __init__(self, hparams, critic):
         super().__init__()
-        self.hparams = hparams
+        self.save_hyperparameters(hparams)
         self.graph_ae = GraphAE(hparams)
         self.critic = critic
         self.tau_scheduler = TauScheduler(hparams)

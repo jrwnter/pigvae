@@ -1,7 +1,7 @@
 import os
 
 
-DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves_synthetic")
+DEFAULT_SAVE_DIR = os.path.join(os.getcwd(), "saves16")
 
 
 def add_arguments(parser):

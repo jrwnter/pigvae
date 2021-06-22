@@ -20,10 +20,10 @@ def main(hparams):
         os.mkdir(hparams.save_dir + "/run{}/".format(hparams.id))
     print("Starting Run {}".format(hparams.id))
     checkpoint_callback = ModelCheckpoint(
-        filepath=hparams.save_dir + "/run{}/".format(hparams.id),
+        dirpath=hparams.save_dir + "/run{}/".format(hparams.id),
+        save_last=True,
         save_top_k=1,
-        monitor="val_loss",
-        save_last=True
+        monitor="val_loss"
     )
     lr_logger = LearningRateMonitor()
     tb_logger = TensorBoardLogger(hparams.save_dir + "/run{}/".format(hparams.id))
@@ -49,16 +49,16 @@ def main(hparams):
         gpus=hparams.gpus,
         progress_bar_refresh_rate=5 if hparams.progress_bar else 0,
         logger=tb_logger,
-        checkpoint_callback=checkpoint_callback,
+        checkpoint_callback=True,
         val_check_interval=hparams.eval_freq if not hparams.test else 100,
         accelerator="ddp",
         plugins=[my_ddp_plugin],
         gradient_clip_val=0.1,
-        callbacks=[lr_logger],
-        profiler=True,
+        callbacks=[lr_logger, checkpoint_callback],
         terminate_on_nan=True,
         replace_sampler_ddp=False,
         precision=hparams.precision,
+        max_epochs=hparams.num_epochs,
         reload_dataloaders_every_epoch=True,
         resume_from_checkpoint=hparams.resume_ckpt if hparams.resume_ckpt != "" else None
     )

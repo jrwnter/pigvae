@@ -1,6 +1,7 @@
 import torch
+from torch.nn.parallel.distributed import DistributedDataParallel
 from pytorch_lightning.overrides.data_parallel import LightningDistributedDataParallel
-from pytorch_lightning.plugins.ddp_plugin import DDPPlugin
+from pytorch_lightning.plugins.training_type.ddp import DDPPlugin
 
 class MyDistributedDataParallel(LightningDistributedDataParallel):
     def scatter(self, inputs, kwargs, device_ids):
@@ -12,10 +13,10 @@ class MyDistributedDataParallel(LightningDistributedDataParallel):
 
 class MyDDP(DDPPlugin):
 
-    def configure_ddp(self, model, device_ids):
-        model = MyDistributedDataParallel(
-            model,
-            device_ids=device_ids,
+    def configure_ddp(self):
+        #self.pre_configure_ddp()
+        self.model = MyDistributedDataParallel(
+            self.model,
+            device_ids=self.determine_ddp_device_ids(),
             find_unused_parameters=True
         )
-        return model
