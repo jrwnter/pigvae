@@ -7,20 +7,12 @@ import pytorch_lightning as pl
 from torch_geometric.data import Data
 from torch_geometric.utils import from_networkx
 import networkx as nx
-from networkx.linalg.graphmatrix import adjacency_matrix
+from networkx.algorithms.shortest_paths.dense import floyd_warshall_numpy
 
 from networkx.generators.random_graphs import *
 from networkx.generators.ego import ego_graph
 from networkx.generators.geometric import random_geometric_graph
 
-
-MEAN_DISTANCE = 2.0626
-STD_DISTANCE = 1.1746
-
-MEAN_NUM_NODES = 17.5
-STD_NUM_NODES = 5.8
-
-NODE_FEATURES = torch.eye(20).unsqueeze(0)
 
 
 class GeometricGraphDataset(Dataset):
@@ -69,8 +61,14 @@ class BarabasiAlbertGraphDataset(Dataset):
         return self.samples_per_epoch
 
     def __getitem__(self, idx):
-        n = np.random.randint(low=self.n_min, high=self.n_max)
-        m = np.random.randint(low=self.m_min, high=self.m_max)
+        if self.n_min == self.n_max:
+            n = self.m_min
+        else:
+            n = np.random.randint(low=self.n_min, high=self.n_max)
+        if self.m_min == self.m_max:
+            m = self.m_min
+        else:
+            m = np.random.randint(low=self.m_min, high=self.m_max)
         g = barabasi_albert_graph(n, m)
         return g
 
@@ -96,6 +94,10 @@ class BinomialGraphDataset(Dataset):
 
     def __getitem__(self, idx):
         n = np.random.randint(low=self.n_min, high=self.n_max)
+        if self.p_min == self.p_max:
+            p = self.p_min
+        else:
+            p = np.random.randint(low=self.p_min, high=self.p_max)
         p = np.random.uniform(low=self.p_min, high=self.p_max)
         g = binomial_graph(n, p)
         if self.pyg:
@@ -155,13 +157,15 @@ class DenseGraphBatch(Data):
             else:
                 graph = data
             num_nodes = graph.number_of_nodes()
-            num_nodes_normalized = (num_nodes - MEAN_NUM_NODES) / STD_NUM_NODES
-            props.append(torch.Tensor([num_nodes_normalized]))
+            props.append(torch.Tensor([num_nodes]))
             graph.add_nodes_from([i for i in range(num_nodes, max_num_nodes)])
             nf = torch.ones(max_num_nodes, 1)
             node_features.append(nf.unsqueeze(0))
-            adj = torch.from_numpy(np.array(adjacency_matrix(graph).todense())).float().unsqueeze(-1)
-            edge_features.append(adj.clone())
+            dm = torch.from_numpy(floyd_warshall_numpy(graph)).long()
+            dm = torch.clamp(dm, 0, 5).unsqueeze(-1)
+            num_nodes = dm.size(1)
+            dm = torch.zeros((num_nodes, num_nodes, 6)).type_as(dm).scatter_(2, dm, 1).float()
+            edge_features.append(dm)
             mask.append((torch.arange(max_num_nodes) < num_nodes).unsqueeze(0))
         node_features = torch.cat(node_features, dim=0)
         edge_features = torch.stack(edge_features, dim=0)
@@ -206,7 +210,7 @@ class GraphDataModule(pl.LightningDataModule):
         elif self.graph_family == "barabasi_albert":
             ds = BarabasiAlbertGraphDataset(samples_per_epoch=samples_per_epoch, **self.graph_kwargs)
         elif self.graph_family == "regular":
-            ds = RegularGraphDataset(samples_per_epoch=samples_per_epoch)
+            ds = RegularGraphDataset(samples_per_epoch=samples_per_epoch, **self.graph_kwargs)
         elif self.graph_family == "geometric":
             ds = GeometricGraphDataset(samples_per_epoch=samples_per_epoch)
         elif self.graph_family == "all":

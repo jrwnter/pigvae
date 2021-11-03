@@ -1,6 +1,6 @@
 import torch
 import pytorch_lightning as pl
-from graphae.modules import GraphAE
+from pigvae.modules import GraphAE
 
 
 class PLGraphAE(pl.LightningModule):
@@ -9,20 +9,16 @@ class PLGraphAE(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters(hparams)
         self.graph_ae = GraphAE(hparams)
-        self.critic = critic
-        self.tau_scheduler = TauScheduler(hparams)
+        self.critic = critic(hparams)
 
-    def forward(self, graph, training, tau):
-        graph_pred, perm, mu, logvar = self.graph_ae(graph, training, tau)
+    def forward(self, graph, training):
+        graph_pred, perm, mu, logvar = self.graph_ae(graph, training, tau=1.0)
         return graph_pred, perm, mu, logvar
 
     def training_step(self, graph, batch_idx):
-        tau = self.tau_scheduler.tau
-        self.log("tau", tau)
         graph_pred, perm, mu, logvar = self(
             graph=graph,
             training=True,
-            tau=tau
         )
         loss = self.critic(
             graph_true=graph,
@@ -35,11 +31,9 @@ class PLGraphAE(pl.LightningModule):
         return loss
 
     def validation_step(self, graph, batch_idx):
-        tau = self.tau_scheduler.tau
         graph_pred, perm, mu, logvar = self(
             graph=graph,
             training=True,
-            tau=tau
         )
         metrics_soft = self.critic.evaluate(
             graph_true=graph,
@@ -52,7 +46,6 @@ class PLGraphAE(pl.LightningModule):
         graph_pred, perm, mu, logvar = self(
             graph=graph,
             training=False,
-            tau=tau
         )
         metrics_hard = self.critic.evaluate(
             graph_true=graph,
@@ -66,14 +59,12 @@ class PLGraphAE(pl.LightningModule):
         self.log_dict(metrics)
         self.log_dict(metrics_soft)
 
-    def on_validation_epoch_end(self) -> None:
-        self.tau_scheduler()
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.graph_ae.parameters(), lr=self.hparams["lr"], betas=(0.9, 0.98))
         lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(
             optimizer=optimizer,
-            gamma=0.99,
+            gamma=0.999,
         )
         if "eval_freq" in self.hparams:
             scheduler = {
@@ -100,17 +91,3 @@ class PLGraphAE(pl.LightningModule):
         optimizer.step(closure=optimizer_closure)
         optimizer.zero_grad()
 
-
-class TauScheduler(object):
-    def __init__(self, hparams):
-        self.tau = hparams["tau"]
-        self.factor = hparams["tau_decay_factor"]
-        self.step_size = hparams["tau_decay_step_size"]
-        self.steps = 0
-
-    def __call__(self):
-        self.steps += 1
-        if self.step_size > 0:
-            if self.steps >= self.step_size:
-                self.tau *= self.factor
-                self.steps = 0

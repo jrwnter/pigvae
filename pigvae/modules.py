@@ -1,8 +1,8 @@
 import torch
 from torch.nn import Linear, LayerNorm, Dropout
 from torch.nn.functional import relu, pad
-from graphae.graph_transformer import Transformer, PositionalEncoding
-from graphae.synthetic_graphs.data import DenseGraphBatch
+from pigvae.graph_transformer import Transformer, PositionalEncoding
+from pigvae.synthetic_graphs.data import DenseGraphBatch
 
 
 class GraphAE(torch.nn.Module):
@@ -29,8 +29,11 @@ class GraphAE(torch.nn.Module):
         graph_emb, mu, logvar = self.bottle_neck_encoder(graph_emb)
         return graph_emb, node_features, mu, logvar
 
-    def decode(self, graph_emb, perm, mask):
+    def decode(self, graph_emb, perm, mask=None):
         props = self.property_predictor(graph_emb).squeeze()
+        if mask is None:
+            num_nodes = torch.round(props * STD_NUM_NODES + MEAN_NUM_NODES).long()
+            mask = torch.arange(max(num_nodes)).type_as(num_nodes).unsqueeze(0) < num_nodes.unsqueeze(1)
         graph_emb = self.bottle_neck_decoder(graph_emb)
         node_logits, edge_logits = self.decoder(
             graph_emb=graph_emb,
@@ -73,8 +76,8 @@ class GraphEncoder(torch.nn.Module):
         node_dim, edge_dim = node_features.size(-1), edge_features.size(-1)
         node_features = pad(node_features, (0, 1, 1, 0))
         edge_features = pad(edge_features, (0, 1, 1, 0, 1, 0))
-        node_features[:, 0, node_dim] = 1
-        edge_features[:, 0, edge_dim] = 1
+        edge_features[:, 0, :, edge_dim] = 1
+        edge_features[:, :, 0, edge_dim] = 1
         mask = pad(mask, (1, 0), value=1)
         return node_features, edge_features, mask
 
@@ -122,8 +125,8 @@ class GraphDecoder(torch.nn.Module):
         self.dropout = Dropout(0.1)
         self.layer_norm = LayerNorm(hparams["graph_decoder_hidden_dim"])
 
-    def init_message_matrix(self, graph_emb, perm):
-        batch_size, num_nodes = perm.size(0), perm.size(1)
+    def init_message_matrix(self, graph_emb, perm, num_nodes):
+        batch_size= graph_emb.size(0)
 
         pos_emb = self.posiotional_embedding(batch_size, num_nodes)
         if perm is not None:
@@ -150,7 +153,7 @@ class GraphDecoder(torch.nn.Module):
 
     def forward(self, graph_emb, perm, mask):
         edge_mask = mask.unsqueeze(1) * mask.unsqueeze(2)
-        x = self.init_message_matrix(graph_emb, perm)
+        x = self.init_message_matrix(graph_emb, perm, num_nodes=mask.size(1))
         x = self.graph_transformer(x, mask=edge_mask)
         node_features, edge_features = self.read_out_message_matrix(x)
         return node_features, edge_features

@@ -59,8 +59,9 @@ class GraphReconstructionLoss(torch.nn.Module):
     def forward(self, graph_true, graph_pred):
         mask = graph_true.mask
         adj_mask = mask.unsqueeze(1) * mask.unsqueeze(2)
-        edges_true = (graph_true.edge_features[adj_mask] == 1).float()
-        edges_pred = graph_pred.edge_features[adj_mask]
+
+        edges_true = (graph_true.edge_features[adj_mask][:, 1] == 1).float()
+        edges_pred = graph_pred.edge_features[adj_mask][:, 1]
         edge_loss = self.edge_loss(
             input=edges_pred,
             target=edges_true

@@ -4,11 +4,11 @@ from argparse import ArgumentParser
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
-from graphae.trainer import PLGraphAE
-from graphae.molecular_graphs.hyperparameter import add_arguments
-from graphae.molecular_graphs.data import MolecularGraphDataModule
-from graphae.ddp import MyDDP
-from graphae.molecular_graphs.metrics import Critic
+from pigvae.trainer import PLGraphAE
+from pigvae.synthetic_graphs.hyperparameter import add_arguments
+from pigvae.synthetic_graphs.data import GraphDataModule
+from pigvae.ddp import MyDDP
+from pigvae.synthetic_graphs.metrics import Critic
 
 
 logging.getLogger("lightning").setLevel(logging.WARNING)
@@ -20,35 +20,45 @@ def main(hparams):
         os.mkdir(hparams.save_dir + "/run{}/".format(hparams.id))
     print("Starting Run {}".format(hparams.id))
     checkpoint_callback = ModelCheckpoint(
-        filepath=hparams.save_dir + "/run{}/".format(hparams.id),
+        dirpath=hparams.save_dir + "/run{}/".format(hparams.id),
+        save_last=True,
         save_top_k=1,
-        monitor="val_loss",
-        save_last=True
+        monitor="val_loss"
     )
     lr_logger = LearningRateMonitor()
     tb_logger = TensorBoardLogger(hparams.save_dir + "/run{}/".format(hparams.id))
-    critic = Critic(hparams.__dict__)
+    critic = Critic
     model = PLGraphAE(hparams.__dict__, critic)
-    datamodule = MolecularGraphDataModule(
-        sdf_path=hparams.data_path,
+    graph_kwargs = {
+        "n_min": hparams.n_min,
+        "n_max": hparams.n_max,
+        "m_min": hparams.m_min,
+        "m_max": hparams.m_max,
+        "p_min": hparams.p_min,
+        "p_max": hparams.p_max
+    }
+    datamodule = GraphDataModule(
+        graph_family=hparams.graph_family,
+        graph_kwargs=graph_kwargs,
         batch_size=hparams.batch_size,
         num_workers=hparams.num_workers,
-        num_eval_samples=hparams.num_eval_samples,
+        samples_per_epoch=100000000
     )
     my_ddp_plugin = MyDDP()
     trainer = pl.Trainer(
         gpus=hparams.gpus,
         progress_bar_refresh_rate=5 if hparams.progress_bar else 0,
         logger=tb_logger,
-        checkpoint_callback=checkpoint_callback,
+        checkpoint_callback=True,
+        val_check_interval=hparams.eval_freq if not hparams.test else 100,
         accelerator="ddp",
         plugins=[my_ddp_plugin],
         gradient_clip_val=0.1,
-        callbacks=[lr_logger],
-        profiler=True,
+        callbacks=[lr_logger, checkpoint_callback],
         terminate_on_nan=True,
         replace_sampler_ddp=False,
         precision=hparams.precision,
+        max_epochs=hparams.num_epochs,
         reload_dataloaders_every_epoch=True,
         resume_from_checkpoint=hparams.resume_ckpt if hparams.resume_ckpt != "" else None
     )
