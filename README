@@ -1,8 +1,8 @@
 Prerequisites:
-    - python 3
-    - pytorch
+    - python 3.8
+    - pytorch=1.7
     - pytorch geometric
-    - pytorch lightning
+    - pytorch-lightning=1.3.1
     - rdkit
     - numpy
     - networkx
@@ -12,11 +12,5 @@ Train on synthetic random graphs, specifying a graph family and parameters:
         python graphae/syntetic_graphs/main.py --progress_bar -i 1 -g 4 --graph_family binomial -b 64 --p_min 0.4 --p_max 0.6
     - mix of 10 different graphs families, on 4 gpus, with parameter p in (0.4, 0.6):
         python graphae/syntetic_graphs/main.py --progress_bar -i 1 -g 4 --graph_family all -b 64
-
-Train on molecular graphs from QM9:
-    - download the qm9 dataset (http://quantum-machine.org/datasets/) and run the suffle_and_filter_qm9_sdf function
-      in graphae/molecular_graphs/utils to extract a shuffled sdf file with only rdkit-readable molecules and run:
-
-        python graphae/molecular_graphs/main.py --progress_bar -i 1 -g 4 -b 16
 
 
